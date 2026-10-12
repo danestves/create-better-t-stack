@@ -4,11 +4,13 @@
  */
 
 import { getLocalD1Owner, webFrontends, type ProjectConfig } from "@better-t-stack/types";
+import { parse, stringify } from "yaml";
 
 import type { JsonValue } from "../core/json-types";
 import type { VirtualFileSystem } from "../core/virtual-fs";
 import { dependencyVersionMap } from "../utils/add-deps";
 import { getDbScriptSupport } from "../utils/db-scripts";
+import { getAllowedDependencyScripts } from "../utils/dependency-scripts";
 
 type PackageJson = {
   name?: string;
@@ -17,7 +19,15 @@ type PackageJson = {
   devDependencies?: Record<string, string>;
   allowScripts?: Record<string, boolean>;
   overrides?: Record<string, string>;
-  workspaces?: string[] | { packages?: string[]; catalog?: Record<string, string> };
+  catalog?: Record<string, string>;
+  catalogs?: Record<string, Record<string, string>>;
+  workspaces?:
+    | string[]
+    | {
+        packages?: string[];
+        catalog?: Record<string, string>;
+        catalogs?: Record<string, Record<string, string>>;
+      };
   packageManager?: string;
   [key: string]: JsonValue | undefined;
 };
@@ -39,11 +49,12 @@ const VITE_PLUS_VERSION = dependencyVersionMap["vite-plus"];
  */
 export function processPackageConfigs(vfs: VirtualFileSystem, config: ProjectConfig): void {
   updateRootPackageJson(vfs, config);
+  processNpmScriptApprovals(vfs, config);
   updateConfigPackageJson(vfs, config);
   updateUiPackageJson(vfs, config);
   updateInfraPackageJson(vfs, config);
   updateDesktopPackageJson(vfs, config);
-  updateVitePlusPackageScripts(vfs, config);
+  updateVitePlusPackages(vfs, config);
 
   if (config.backend === "convex") {
     updateConvexPackageJson(vfs, config);
@@ -184,7 +195,9 @@ function updateRootPackageJson(vfs: VirtualFileSystem, config: ProjectConfig): v
     config.webDeploy === "cloudflare" || config.serverDeploy === "cloudflare";
   const hasPrismaDeploy = config.webDeploy === "prisma" || config.serverDeploy === "prisma";
   const hasAlchemyDeploy = hasCloudflareDeploy || hasPrismaDeploy;
+  const hasAxiom = addons.includes("axiom");
   const hasVercelDeploy = config.webDeploy === "vercel" || config.serverDeploy === "vercel";
+  const hasDockerDeploy = config.webDeploy === "docker" || config.serverDeploy === "docker";
   // When web and server deploy to different cloud platforms, deploy scripts
   // are named by target (deploy:web / deploy:server); otherwise plain deploy
   const isMixedCloud = hasAlchemyDeploy && hasVercelDeploy;
@@ -203,16 +216,30 @@ function updateRootPackageJson(vfs: VirtualFileSystem, config: ProjectConfig): v
     }
   }
 
+  if (hasAxiom && !hasAlchemyDeploy) {
+    const alchemyDeployScript = hasVercelDeploy || hasDockerDeploy ? "deploy:infra" : "deploy";
+    scripts[alchemyDeployScript] = pmConfig.filter(infraPackageName, "deploy");
+    scripts.destroy = pmConfig.filter(infraPackageName, "destroy");
+  }
+
   if (hasVercelDeploy) {
     const vercelTarget = config.webDeploy === "vercel" ? "web" : "server";
     const vercelDeploy = isMixedCloud ? `deploy:${vercelTarget}` : "deploy";
-    scripts["deploy:setup"] = "vercel link";
-    scripts["dev:vercel"] = "vercel dev -L";
+    // Run the CLI without installing it: its pinned jose@5 displaces better-auth's jose@6 peer
+    // at the npm root, which nests drizzle-orm away from the hoisted drizzle-kit
+    const vercel =
+      config.packageManager === "bun"
+        ? "bunx vercel"
+        : config.packageManager === "pnpm"
+          ? "pnpm dlx vercel"
+          : "npx --yes vercel";
+    scripts["deploy:setup"] = `${vercel} link`;
+    scripts["dev:vercel"] = `${vercel} dev -L`;
     scripts["env:preview"] = "tsx scripts/sync-vercel-env.ts preview";
     scripts["env:production"] = "tsx scripts/sync-vercel-env.ts production";
-    scripts[vercelDeploy] = "vercel deploy";
-    scripts[`${vercelDeploy}:prod`] = "vercel deploy --prod";
-    scripts["deploy:check"] = "vercel deploy --dry";
+    scripts[vercelDeploy] = `${vercel} deploy`;
+    scripts[`${vercelDeploy}:prod`] = `${vercel} deploy --prod`;
+    scripts["deploy:check"] = `${vercel} deploy --dry`;
   }
 
   // Add compose scripts when deploying web/server as Docker containers
@@ -227,15 +254,6 @@ function updateRootPackageJson(vfs: VirtualFileSystem, config: ProjectConfig): v
   // For preview purposes, we just show the configured package manager
   pkgJson.packageManager ||= `${packageManager}@latest`;
 
-  if (packageManager === "npm") {
-    const allowScripts = getNpmAllowedScripts(config);
-    if (Object.keys(allowScripts).length > 0) {
-      pkgJson.allowScripts = allowScripts;
-    } else {
-      delete pkgJson.allowScripts;
-    }
-  }
-
   if (config.api === "orpc" && config.frontend.includes("nuxt")) {
     pkgJson.overrides = {
       ...pkgJson.overrides,
@@ -243,12 +261,26 @@ function updateRootPackageJson(vfs: VirtualFileSystem, config: ProjectConfig): v
     };
   }
 
-  if (hasVitePlus) {
+  if (hasVitePlus && packageManager !== "pnpm") {
     pkgJson.overrides = {
       ...pkgJson.overrides,
-      // vite-plus 0.2+ bundles vitest directly; @voidzero-dev/vite-plus-test is discontinued
       vite: `npm:@voidzero-dev/vite-plus-core@${VITE_PLUS_VERSION}`,
     };
+    if (packageManager === "bun") {
+      pkgJson.devDependencies = {
+        ...pkgJson.devDependencies,
+        vite: pkgJson.devDependencies?.vite?.startsWith("catalog:")
+          ? pkgJson.devDependencies.vite
+          : `npm:@voidzero-dev/vite-plus-core@${VITE_PLUS_VERSION}`,
+      };
+    }
+  }
+  if (
+    hasVitePlus &&
+    packageManager === "pnpm" &&
+    pkgJson.overrides?.vite?.startsWith("npm:@voidzero-dev/vite-plus-core@")
+  ) {
+    delete pkgJson.overrides.vite;
   }
 
   if (backend === "convex") {
@@ -272,66 +304,6 @@ function updateRootPackageJson(vfs: VirtualFileSystem, config: ProjectConfig): v
   vfs.writeJson("package.json", pkgJson);
 }
 
-interface NpmAllowedScripts extends Record<string, boolean> {}
-
-function getNpmAllowedScripts(config: ProjectConfig): NpmAllowedScripts {
-  const allowed: NpmAllowedScripts = {};
-  const hasCloudflareDeploy =
-    config.webDeploy === "cloudflare" || config.serverDeploy === "cloudflare";
-  const hasPrismaDeploy = config.webDeploy === "prisma" || config.serverDeploy === "prisma";
-
-  if (
-    config.runtime === "node" ||
-    hasCloudflareDeploy ||
-    config.webDeploy === "docker" ||
-    config.serverDeploy === "docker" ||
-    config.webDeploy === "vercel" ||
-    config.serverDeploy === "vercel" ||
-    config.addons.includes("turborepo") ||
-    config.addons.includes("vite-plus") ||
-    config.frontend.includes("react-router") ||
-    config.frontend.includes("nuxt")
-  ) {
-    allowed.esbuild = true;
-  }
-
-  if (config.frontend.includes("nuxt")) {
-    allowed["@parcel/watcher"] = true;
-    allowed["vue-demi"] = true;
-  }
-
-  if (
-    hasCloudflareDeploy ||
-    hasPrismaDeploy ||
-    config.webDeploy === "docker" ||
-    config.webDeploy === "vercel" ||
-    config.addons.includes("pwa") ||
-    config.frontend.includes("next")
-  ) {
-    allowed.sharp = true;
-  }
-
-  if (hasCloudflareDeploy || hasPrismaDeploy) {
-    allowed["msgpackr-extract"] = true;
-    allowed.workerd = true;
-  }
-
-  if (config.orm === "prisma") {
-    allowed["@prisma/engines"] = true;
-    allowed.prisma = true;
-  }
-
-  if (config.addons.includes("lefthook")) {
-    allowed.lefthook = true;
-  }
-
-  if (config.addons.includes("nx")) {
-    allowed.nx = true;
-  }
-
-  return allowed;
-}
-
 function getWorkspacePackages(workspaces: PackageJson["workspaces"]): string[] {
   if (Array.isArray(workspaces)) {
     return workspaces;
@@ -348,7 +320,11 @@ function getUpdatedWorkspaces(
   existingWorkspaces: PackageJson["workspaces"],
   packages: string[],
 ): WorkspacesConfig {
-  if (existingWorkspaces && !Array.isArray(existingWorkspaces) && existingWorkspaces.catalog) {
+  if (
+    existingWorkspaces &&
+    !Array.isArray(existingWorkspaces) &&
+    (existingWorkspaces.catalog || existingWorkspaces.catalogs)
+  ) {
     return {
       ...existingWorkspaces,
       packages,
@@ -605,7 +581,6 @@ function updateDbPackageJson(vfs: VirtualFileSystem, config: ProjectConfig): voi
       scripts["db:generate"] = "prisma generate";
       scripts["db:migrate"] = "prisma migrate dev";
       scripts["db:migrate:deploy"] = "prisma migrate deploy";
-      scripts.postinstall ??= "prisma generate";
       if (!isD1Alchemy) {
         scripts["db:studio"] = "prisma studio";
       }
@@ -684,11 +659,27 @@ function updateConvexPackageJson(vfs: VirtualFileSystem, config: ProjectConfig):
 
 export function finalizeAlchemyDevScripts(vfs: VirtualFileSystem, config: ProjectConfig): void {
   const { serverDeploy, webDeploy, backend } = config;
+  const hasAxiom = config.addons.includes("axiom");
+  const hasAxiomServerRuntime =
+    hasAxiom && ["hono", "express", "fastify", "elysia"].includes(backend);
+  const hasAxiomWebRuntime =
+    hasAxiom &&
+    config.frontend.some((frontend) =>
+      ["next", "tanstack-start", "nuxt", "svelte", "astro"].includes(frontend),
+    );
   const rootPkgPath = "package.json";
   const rootPkg = vfs.readJson<PackageJson>(rootPkgPath);
+  const pmConfig = getPackageManagerConfig(config.packageManager, {
+    hasTurborepo: config.addons.includes("turborepo"),
+    hasNx: config.addons.includes("nx"),
+    hasVitePlus: config.addons.includes("vite-plus"),
+  });
 
   // Alchemy owns the selected app's development process.
-  if (["cloudflare", "prisma"].includes(serverDeploy) && backend !== "self") {
+  if (
+    (["cloudflare", "prisma"].includes(serverDeploy) || hasAxiomServerRuntime) &&
+    backend !== "self"
+  ) {
     const serverPkgPath = "apps/server/package.json";
     const serverPkg = vfs.readJson<PackageJson>(serverPkgPath);
     if (serverPkg?.scripts?.dev) {
@@ -697,11 +688,15 @@ export function finalizeAlchemyDevScripts(vfs: VirtualFileSystem, config: Projec
       vfs.writeJson(serverPkgPath, serverPkg);
     }
     if (rootPkg?.scripts?.["dev:server"]) {
-      rootPkg.scripts["dev:server"] = rootPkg.scripts["dev:server"].replace(/\bdev$/, "dev:bare");
+      if (hasAxiomServerRuntime) {
+        delete rootPkg.scripts["dev:server"];
+      } else {
+        rootPkg.scripts["dev:server"] = pmConfig.filter(backend, "dev:bare");
+      }
     }
   }
 
-  if (["cloudflare", "prisma"].includes(webDeploy)) {
+  if (["cloudflare", "prisma"].includes(webDeploy) || hasAxiomWebRuntime) {
     const webPkgPath = "apps/web/package.json";
     const webPkg = vfs.readJson<PackageJson>(webPkgPath);
     if (webPkg?.scripts?.dev) {
@@ -710,7 +705,11 @@ export function finalizeAlchemyDevScripts(vfs: VirtualFileSystem, config: Projec
       vfs.writeJson(webPkgPath, webPkg);
     }
     if (rootPkg?.scripts?.["dev:web"]) {
-      rootPkg.scripts["dev:web"] = rootPkg.scripts["dev:web"].replace(/\bdev$/, "dev:bare");
+      if (hasAxiomWebRuntime) {
+        delete rootPkg.scripts["dev:web"];
+      } else {
+        rootPkg.scripts["dev:web"] = pmConfig.filter("web", "dev:bare");
+      }
     }
   }
 
@@ -719,16 +718,51 @@ export function finalizeAlchemyDevScripts(vfs: VirtualFileSystem, config: Projec
   }
 }
 
-function updateVitePlusPackageScripts(vfs: VirtualFileSystem, config: ProjectConfig): void {
+function updateVitePlusPackages(vfs: VirtualFileSystem, config: ProjectConfig): void {
   if (!config.addons.includes("vite-plus")) {
     return;
   }
 
   const webPkgPath = "apps/web/package.json";
   const webPkg = vfs.readJson<PackageJson>(webPkgPath);
-  if (!webPkg?.scripts) {
-    return;
+
+  const coreAlias = `npm:@voidzero-dev/vite-plus-core@${VITE_PLUS_VERSION}`;
+  const rootPkg = vfs.readJson<PackageJson>("package.json");
+  const catalogNames = new Set<string>();
+  for (const pkg of [rootPkg, webPkg]) {
+    for (const dependencies of [pkg?.dependencies, pkg?.devDependencies]) {
+      if (!dependencies?.vite) continue;
+      if (dependencies.vite.startsWith("catalog:")) {
+        catalogNames.add(dependencies.vite.slice("catalog:".length));
+      } else {
+        dependencies.vite = coreAlias;
+      }
+    }
   }
+  const updateCatalogs = (workspace: Pick<PackageJson, "catalog" | "catalogs">) => {
+    for (const name of catalogNames) {
+      const catalogs =
+        !name || name === "default"
+          ? [workspace.catalog, workspace.catalogs?.default]
+          : [workspace.catalogs?.[name]];
+      for (const catalog of catalogs) {
+        if (catalog?.vite) catalog.vite = coreAlias;
+      }
+    }
+  };
+  if (config.packageManager === "pnpm") {
+    const workspace = parse(vfs.readFile("pnpm-workspace.yaml") ?? "") ?? {};
+    updateCatalogs(workspace);
+    vfs.writeFile("pnpm-workspace.yaml", stringify(workspace));
+  } else if (rootPkg) {
+    updateCatalogs(rootPkg);
+    if (rootPkg.workspaces && !Array.isArray(rootPkg.workspaces)) {
+      updateCatalogs(rootPkg.workspaces);
+    }
+  }
+  if (rootPkg) vfs.writeJson("package.json", rootPkg);
+
+  if (!webPkg?.scripts) return;
 
   const viteScriptReplacements = {
     vite: "vp dev",
@@ -740,11 +774,25 @@ function updateVitePlusPackageScripts(vfs: VirtualFileSystem, config: ProjectCon
   } satisfies Record<string, string>;
 
   for (const [scriptName, command] of Object.entries(webPkg.scripts)) {
+    const typeBuildPrefix = "tsc -b ../../packages/api && ";
+    const prefix = command.startsWith(typeBuildPrefix) ? typeBuildPrefix : "";
+    const frameworkCommand = command.slice(prefix.length);
     const replacement = Object.entries(viteScriptReplacements).find(
-      ([viteCommand]) => viteCommand === command,
+      ([viteCommand]) => viteCommand === frameworkCommand,
     )?.[1];
-    webPkg.scripts[scriptName] = replacement ?? command;
+    webPkg.scripts[scriptName] = replacement ? `${prefix}${replacement}` : command;
   }
 
   vfs.writeJson(webPkgPath, webPkg);
+}
+
+export function processNpmScriptApprovals(vfs: VirtualFileSystem, config: ProjectConfig): void {
+  if (config.packageManager !== "npm") return;
+  const pkg = vfs.readJson<PackageJson>("package.json");
+  if (!pkg) return;
+  const allowed = getAllowedDependencyScripts(config);
+  if (Object.keys(allowed).length) {
+    pkg.allowScripts = { ...allowed, ...pkg.allowScripts };
+    vfs.writeJson("package.json", pkg);
+  }
 }

@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import Purchases, {
   type CustomerInfo,
+  type CustomerInfoUpdateListener,
   LOG_LEVEL,
   type PurchasesOffering,
   type PurchasesPackage,
@@ -35,12 +36,6 @@ export type RevenueCatInitResult =
 
 type RevenueCatPurchaseError = {
   userCancelled?: boolean;
-};
-
-type CustomerInfoListener = (customerInfo: CustomerInfo) => void;
-
-type PurchasesWithRemoveListener = typeof Purchases & {
-  removeCustomerInfoUpdateListener?: (listener: CustomerInfoListener) => void;
 };
 
 export function hasProEntitlement(customerInfo: CustomerInfo | null): boolean {
@@ -96,11 +91,11 @@ export async function configureRevenueCat(): Promise<RevenueCatInitResult> {
  * Subscribe to real-time entitlement changes. Returns an unsubscribe function.
  * Only `RevenueCatProvider` should use this directly.
  */
-export function onCustomerInfoUpdated(listener: CustomerInfoListener): () => void {
+export function onCustomerInfoUpdated(listener: CustomerInfoUpdateListener): () => void {
   Purchases.addCustomerInfoUpdateListener(listener);
 
   return () => {
-    (Purchases as PurchasesWithRemoveListener).removeCustomerInfoUpdateListener?.(listener);
+    Purchases.removeCustomerInfoUpdateListener(listener);
   };
 }
 

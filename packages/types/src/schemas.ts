@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { TASK_RUNNER_ADDONS, OBSERVABILITY_ADDONS } from "./compatibility";
+
 export const DatabaseSchema = z
   .enum(["none", "sqlite", "postgres", "mysql", "mongodb"])
   .describe("Database type");
@@ -51,16 +53,25 @@ export const AddonsSchema = z
     "wxt",
     "skills",
     "evlog",
+    "axiom",
     "none",
   ])
   .describe("Additional addons");
 
 const AddonsListSchema = z.array(AddonsSchema).superRefine((addons, ctx) => {
-  const taskRunners = addons.filter((addon) => ["nx", "turborepo", "vite-plus"].includes(addon));
+  const taskRunners = addons.filter((addon) => TASK_RUNNER_ADDONS.includes(addon));
   if (taskRunners.length > 1) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "`nx`, `turborepo`, and `vite-plus` cannot be used together",
+    });
+  }
+
+  const observabilityAddons = addons.filter((addon) => OBSERVABILITY_ADDONS.includes(addon));
+  if (observabilityAddons.length > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "`evlog` and `axiom` cannot be used together because Axiom includes evlog",
     });
   }
 });
@@ -196,7 +207,7 @@ export const SkillsSourceSchema = z
     "vercel-labs/agent-skills",
     "vercel/ai",
     "vercel/turborepo",
-    "yusukebe/hono-skill",
+    "honojs/skills",
     "vercel/next.js",
     "nuxt/ui",
     "heroui-inc/heroui",
@@ -313,6 +324,7 @@ export const UltraciteEditorSchema = z
     "vscode",
     "cursor",
     "windsurf",
+    "devin",
     "codebuddy",
     "antigravity",
     "bob",
@@ -368,11 +380,28 @@ export const UltraciteAgentSchema = z
     "cursor-cli",
     "mistral-vibe",
     "vercel",
+    "snowflake-coco",
+    "kimi-code",
+    "xum",
+    "kiro-cli",
+    "fx",
+    "antigravity",
+    "grok",
   ])
   .describe("Ultracite agent integration");
 
 export const UltraciteHookSchema = z
-  .enum(["cursor", "windsurf", "codebuddy", "claude", "copilot"])
+  .enum([
+    "cursor",
+    "windsurf",
+    "devin",
+    "codebuddy",
+    "claude",
+    "codex",
+    "deepagents",
+    "copilot",
+    "grok",
+  ])
   .describe("Ultracite hook integration");
 
 export const DbSetupModeSchema = z

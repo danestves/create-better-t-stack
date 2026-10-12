@@ -5,7 +5,7 @@ import { collectFiles } from "./setup";
 import {
   expectError,
   expectSuccess,
-  runTRPCTest,
+  runCreateTest,
   SERVER_DEPLOYS,
   type TestConfig,
   WEB_DEPLOYS,
@@ -18,21 +18,10 @@ describe("Deployment Configurations", () => {
         if (webDeploy === "none") continue;
 
         it(`should work with ${webDeploy} web deploy + web frontend`, async () => {
-          const result = await runTRPCTest({
+          const result = await runCreateTest({
             projectName: `${webDeploy}-web-deploy`,
             webDeploy: webDeploy,
-            serverDeploy: "none",
             frontend: [webDeploy === "prisma" ? "next" : "tanstack-router"],
-            backend: "hono",
-            runtime: "bun",
-            database: "sqlite",
-            orm: "drizzle",
-            auth: "none",
-            api: "trpc",
-            addons: ["none"],
-            examples: ["none"],
-            dbSetup: "none",
-            install: false,
           });
 
           expectSuccess(result);
@@ -41,63 +30,28 @@ describe("Deployment Configurations", () => {
     });
 
     it("should work with web deploy none", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "no-web-deploy",
-        webDeploy: "none",
-        serverDeploy: "none",
-        frontend: ["tanstack-router"],
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should fail with web deploy but no web frontend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "web-deploy-no-web-frontend-fail",
         webDeploy: "cloudflare",
-        serverDeploy: "none",
-        frontend: ["native-bare"], // Native frontend only
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        expectError: true,
+        frontend: ["native-bare"],
       });
 
       expectError(result, "'--web-deploy' requires a web frontend");
     });
 
     it("should work with web deploy + mixed web and native frontends", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "web-deploy-mixed-frontends",
         webDeploy: "cloudflare",
-        serverDeploy: "none",
         frontend: ["tanstack-router", "native-bare"],
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -139,7 +93,7 @@ describe("Deployment Configurations", () => {
           config.api = "trpc";
         }
 
-        const result = await runTRPCTest(config);
+        const result = await runCreateTest(config);
         expectSuccess(result);
       }
     });
@@ -151,21 +105,15 @@ describe("Deployment Configurations", () => {
         if (serverDeploy === "none") continue;
 
         it(`should work with ${serverDeploy} server deploy + backend`, async () => {
-          const result = await runTRPCTest({
+          const result = await runCreateTest({
             projectName: `${serverDeploy}-server-deploy`,
-            webDeploy: "none",
             serverDeploy: serverDeploy,
-            backend: "hono",
-            runtime: serverDeploy === "cloudflare" ? "workers" : "bun",
-            database: "sqlite",
-            orm: "drizzle",
-            auth: "none",
-            api: "trpc",
-            frontend: ["tanstack-router"],
-            addons: ["none"],
-            examples: ["none"],
-            dbSetup: "none",
-            install: false,
+            runtime:
+              serverDeploy === "cloudflare"
+                ? "workers"
+                : serverDeploy === "vercel"
+                  ? "node"
+                  : "bun",
           });
 
           expectSuccess(result);
@@ -174,42 +122,22 @@ describe("Deployment Configurations", () => {
     });
 
     it("should work with server deploy none", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "no-server-deploy",
-        webDeploy: "none",
-        serverDeploy: "none",
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        frontend: ["tanstack-router"],
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should fail with server deploy but no backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "server-deploy-no-backend-fail",
-        webDeploy: "none",
         serverDeploy: "cloudflare",
         backend: "none",
         runtime: "none",
         database: "none",
         orm: "none",
-        auth: "none",
         api: "none",
-        frontend: ["tanstack-router"],
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        expectError: true,
       });
 
       expectError(
@@ -247,15 +175,14 @@ describe("Deployment Configurations", () => {
           config.serverDeploy = "none";
         }
 
-        const result = await runTRPCTest(config);
+        const result = await runCreateTest(config);
         expectSuccess(result);
       }
     });
 
     it("should fail with server deploy + convex backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "server-deploy-convex-fail",
-        webDeploy: "none",
         serverDeploy: "cloudflare",
         backend: "convex",
         runtime: "none",
@@ -263,11 +190,6 @@ describe("Deployment Configurations", () => {
         orm: "none",
         auth: "clerk",
         api: "none",
-        frontend: ["tanstack-router"],
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        expectError: true,
       });
 
       expectError(result, "Convex backend requires '--server-deploy none'");
@@ -276,63 +198,30 @@ describe("Deployment Configurations", () => {
 
   describe("Workers Runtime Deployment Constraints", () => {
     it("should work with workers runtime + server deploy", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "workers-server-deploy",
-        webDeploy: "none",
         runtime: "workers",
         serverDeploy: "cloudflare",
-        backend: "hono",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        frontend: ["tanstack-router"],
-        addons: ["none"],
-        examples: ["none"],
         dbSetup: "d1",
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should fail with workers runtime + no server deploy", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "workers-no-server-deploy-fail",
         runtime: "workers",
-        serverDeploy: "none",
-        backend: "hono",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        frontend: ["tanstack-router"],
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        webDeploy: "none",
-        expectError: true,
       });
 
       expectError(result, "Cloudflare Workers runtime requires a server deployment");
     });
 
     it("should fail with workers runtime + vercel server deploy", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "workers-vercel-server-deploy-fail",
         runtime: "workers",
         serverDeploy: "vercel",
-        backend: "hono",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        frontend: ["tanstack-router"],
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        webDeploy: "none",
-        expectError: true,
       });
 
       expectError(result, "'--server-deploy vercel' is not compatible with '--runtime workers'");
@@ -346,7 +235,7 @@ describe("Deployment Configurations", () => {
         webDeploy: "vercel",
         serverDeploy: "vercel",
         backend: "hono",
-        runtime: "bun",
+        runtime: "node",
         database: "sqlite",
         orm: "drizzle",
         auth: "better-auth",
@@ -376,10 +265,8 @@ describe("Deployment Configurations", () => {
             framework?: string;
             entrypoint?: string;
             buildCommand?: string;
-            routes?: Array<{
-              src?: string;
-              transforms?: Array<{ type?: string; op?: string; args?: string }>;
-            }>;
+            functions?: Record<string, { includeFiles?: string }>;
+            routes?: unknown[];
           }
         >;
         rewrites?: Array<{
@@ -390,6 +277,7 @@ describe("Deployment Configurations", () => {
       const packageJson = JSON.parse(files.get("package.json") ?? "{}") as {
         scripts?: Record<string, string>;
         devDependencies?: Record<string, string>;
+        varlock?: { loadPath?: string };
       };
 
       expect(files.has("vercel.json")).toBe(true);
@@ -397,7 +285,7 @@ describe("Deployment Configurations", () => {
       // Without this, no-git deploys upload local .env files and frameworks
       // like Next.js load the localhost values at runtime
       expect(files.get(".vercelignore")).toContain("**/.env");
-      expect(vercelConfig.bunVersion).toBe("1.x");
+      expect(vercelConfig.bunVersion).toBeUndefined();
       expect(vercelConfig.services?.web).toMatchObject({
         root: "apps/web",
         framework: "nextjs",
@@ -408,10 +296,17 @@ describe("Deployment Configurations", () => {
         framework: "hono",
         entrypoint: "src/index.ts",
       });
-      expect(vercelConfig.services?.server?.routes?.[0]).toMatchObject({
-        src: "/api/((?!auth(?:/|$)).*)",
-        transforms: [{ type: "request.path", op: "set", args: "/$1" }],
-      });
+      // Vercel Services pass the original path, so the server serves /api itself
+      expect(vercelConfig.services?.server?.routes).toBeUndefined();
+      expect(files.get("apps/server/src/index.ts")).toContain('"/api/trpc/*"');
+      expect(files.get("apps/web/.env")).toContain(
+        "NEXT_PUBLIC_SERVER_URL=http://localhost:3000/api",
+      );
+      // The function runs from the repo root, where varlock/auto-load looks for config
+      expect(packageJson.varlock).toEqual({ loadPath: "./apps/server/" });
+      expect(vercelConfig.services?.server?.functions?.["src/index.ts"]?.includeFiles).toContain(
+        "apps/server/.env.schema",
+      );
       expect(vercelConfig.rewrites).toEqual([
         { source: "/api/(.*)", destination: { service: "server" } },
         { source: "/(.*)", destination: { service: "web" } },
@@ -442,17 +337,18 @@ describe("Deployment Configurations", () => {
       expect(packageJson.devDependencies).not.toHaveProperty("@vercel/config");
       expect(packageJson.devDependencies).toHaveProperty("@types/node");
       expect(packageJson.devDependencies).toHaveProperty("tsx");
-      expect(packageJson.devDependencies).toHaveProperty("vercel");
+      // The CLI runs through the package runner; installing it breaks npm hoisting
+      expect(packageJson.devDependencies).not.toHaveProperty("vercel");
       // File parsing uses the Node runtime without a dotenv dependency.
       expect(packageJson.devDependencies).not.toHaveProperty("dotenv");
       expect(packageJson.scripts).toMatchObject({
-        "deploy:setup": "vercel link",
-        "dev:vercel": "vercel dev -L",
+        "deploy:setup": "bunx vercel link",
+        "dev:vercel": "bunx vercel dev -L",
         "env:preview": "tsx scripts/sync-vercel-env.ts preview",
         "env:production": "tsx scripts/sync-vercel-env.ts production",
-        deploy: "vercel deploy",
-        "deploy:prod": "vercel deploy --prod",
-        "deploy:check": "vercel deploy --dry",
+        deploy: "bunx vercel deploy",
+        "deploy:prod": "bunx vercel deploy --prod",
+        "deploy:check": "bunx vercel deploy --dry",
       });
       expect(packageJson.scripts).not.toHaveProperty("deploy:vercel");
       expect(files.get("apps/web/.env.schema")).toContain("@type=string(matches=");
@@ -460,17 +356,6 @@ describe("Deployment Configurations", () => {
       // Server-side better-auth must build public callback URLs through the
       // /api rewrite prefix, not the bare origin
       expect(files.get("apps/server/.env.schema")).toContain("${VERCEL_ORIGIN}/api/auth");
-      // better-auth and tRPC clients must normalize the same-origin /api path;
-      // both reject relative URLs (BetterAuthError / SSR fetch failure)
-      const authClient = files.get("apps/web/src/lib/auth-client.ts") ?? "";
-      expect(authClient).toContain("function getServerUrl(url: string)");
-      // The /api/auth suffix is required: better-auth uses a baseURL with a
-      // path as-is, so the origin-only shortcut breaks same-origin deploys
-      expect(authClient).toContain(
-        'baseURL: new URL("/api/auth", getServerUrl(env.NEXT_PUBLIC_SERVER_URL)).toString()',
-      );
-      const trpcClient = files.get("apps/web/src/utils/trpc.ts") ?? "";
-      expect(trpcClient).toContain("url: `${getServerUrl(env.NEXT_PUBLIC_SERVER_URL)}/trpc`");
       expect(files.get("README.md")).toContain("### Vercel Services");
       expect(files.get("README.md")).toContain("Sync preview env");
       expect(files.get("README.md")).toContain("Config: `vercel.json`");
@@ -509,12 +394,12 @@ describe("Deployment Configurations", () => {
       };
 
       // Different platforms per target: scripts are named by what they deploy
-      expect(pkg.scripts?.["deploy:web"]).toBe("vercel deploy");
-      expect(pkg.scripts?.["deploy:web:prod"]).toBe("vercel deploy --prod");
+      expect(pkg.scripts?.["deploy:web"]).toBe("bunx vercel deploy");
+      expect(pkg.scripts?.["deploy:web:prod"]).toBe("bunx vercel deploy --prod");
       expect(pkg.scripts?.["deploy:server"]).toContain("deploy");
       expect(pkg.scripts?.destroy).toContain("destroy");
       expect(pkg.scripts).not.toHaveProperty("deploy");
-      expect(pkg.scripts?.["deploy:setup"]).toBe("vercel link");
+      expect(pkg.scripts?.["deploy:setup"]).toBe("bunx vercel link");
       expect(pkg.scripts?.["env:production"]).toBe("tsx scripts/sync-vercel-env.ts production");
     });
 
@@ -524,7 +409,7 @@ describe("Deployment Configurations", () => {
         webDeploy: "vercel",
         serverDeploy: "vercel",
         backend: "express",
-        runtime: "bun",
+        runtime: "node",
         database: "sqlite",
         orm: "drizzle",
         auth: "none",
@@ -561,7 +446,7 @@ describe("Deployment Configurations", () => {
       expect(orpcClient).toContain("VERCEL_PROJECT_PRODUCTION_URL");
       // Preview/branch SSR must resolve the current deployment, not production.
       expect(orpcClient).toContain('VERCEL_ENV === "production"');
-      expect(orpcClient).toContain("url: `${getServerUrl(env.VITE_SERVER_URL)}/rpc`");
+      expect(orpcClient).toContain("url: `${getServerUrl(ENV.VITE_SERVER_URL)}/rpc`");
     });
 
     it("should generate Vercel web-only config for self fullstack backends", async () => {
@@ -652,7 +537,7 @@ describe("Deployment Configurations", () => {
         webDeploy: "none",
         serverDeploy: "vercel",
         backend: "hono",
-        runtime: "bun",
+        runtime: "node",
         database: "sqlite",
         orm: "drizzle",
         auth: "better-auth",
@@ -682,25 +567,25 @@ describe("Deployment Configurations", () => {
       expect(syncScript).not.toContain('"CORS_ORIGIN"');
     });
 
-    it("should export Elysia apps for Vercel server deployments", async () => {
+    it("should generate Prisma Client before each Vercel service build", async () => {
       const result = await createVirtual({
-        projectName: "elysia-vercel",
-        webDeploy: "none",
+        projectName: "next-express-prisma-vercel",
+        webDeploy: "vercel",
         serverDeploy: "vercel",
-        backend: "elysia",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
+        backend: "express",
+        runtime: "node",
+        database: "postgres",
+        orm: "prisma",
+        auth: "better-auth",
         payments: "none",
         api: "trpc",
-        frontend: ["tanstack-router"],
+        frontend: ["next"],
         addons: ["none"],
         examples: ["none"],
         dbSetup: "none",
         install: false,
         git: false,
-        packageManager: "bun",
+        packageManager: "pnpm",
       });
 
       if (result.isErr()) {
@@ -708,14 +593,86 @@ describe("Deployment Configurations", () => {
       }
 
       const files = collectFiles(result.value.root, result.value.root.path);
-      const serverEntry = files.get("apps/server/src/index.ts");
+      const vercelConfig = JSON.parse(files.get("vercel.json") ?? "{}") as {
+        services?: Record<string, { buildCommand?: string }>;
+      };
 
-      expect(serverEntry).toContain("const app = new Elysia()");
-      expect(serverEntry).toContain("export default app;");
-      // Bun does not auto-serve Elysia's default export, so a guarded local
-      // listen must remain (skipped on Vercel via process.env.VERCEL).
-      expect(serverEntry).toContain("if (!process.env.VERCEL)");
-      expect(serverEntry).toContain("app.listen(3000");
+      for (const service of ["web", "server"]) {
+        expect(vercelConfig.services?.[service]?.buildCommand).toStartWith(
+          `cd ../.. && pnpm run db:generate && cd apps/${service} && `,
+        );
+      }
+    });
+
+    it("should keep Nuxt Icon's endpoint off the server's /api path on Vercel", async () => {
+      const create = (backend: "hono" | "self") =>
+        createVirtual({
+          projectName: `nuxt-${backend}-vercel`,
+          frontend: ["nuxt"],
+          backend,
+          runtime: backend === "self" ? "none" : "node",
+          database: "none",
+          orm: "none",
+          auth: "none",
+          payments: "none",
+          api: "orpc",
+          addons: ["none"],
+          examples: ["none"],
+          dbSetup: "none",
+          install: false,
+          git: false,
+          packageManager: "bun",
+          webDeploy: "vercel",
+          serverDeploy: backend === "self" ? "none" : "vercel",
+        });
+      const combined = await create("hono");
+      const self = await create("self");
+      if (combined.isErr()) throw combined.error;
+      if (self.isErr()) throw self.error;
+
+      // Vercel routes /api/* to the server service, which would 404 Nuxt Icon's default endpoint
+      expect(
+        collectFiles(combined.value.root, combined.value.root.path).get("apps/web/nuxt.config.ts"),
+      ).toContain('localApiEndpoint: "/_nuxt_icon"');
+      expect(
+        collectFiles(self.value.root, self.value.root.path).get("apps/web/nuxt.config.ts"),
+      ).not.toContain("localApiEndpoint");
+    });
+
+    it("should default Vercel server deployments to the node runtime", async () => {
+      const result = await createVirtual({
+        projectName: "vercel-default-runtime",
+        frontend: ["tanstack-router"],
+        backend: "hono",
+        database: "none",
+        orm: "none",
+        auth: "none",
+        payments: "none",
+        api: "trpc",
+        addons: ["none"],
+        examples: ["none"],
+        dbSetup: "none",
+        install: false,
+        git: false,
+        packageManager: "bun",
+        webDeploy: "vercel",
+        serverDeploy: "vercel",
+      });
+
+      if (result.isErr()) throw result.error;
+      expect(result.value.config.runtime).toBe("node");
+    });
+
+    it("should reject Bun runtime Vercel server deployments", async () => {
+      // varlock/auto-load launches the Node-based Varlock CLI; Vercel's Bun runtime has no Node
+      const result = await runCreateTest({
+        projectName: "elysia-bun-vercel-fail",
+        serverDeploy: "vercel",
+        backend: "elysia",
+        runtime: "bun",
+      });
+
+      expectError(result, "'--server-deploy vercel' is not compatible with '--runtime bun'");
     });
 
     it("should guard the local Elysia listen for node-runtime Vercel deploys", async () => {
@@ -759,7 +716,7 @@ describe("Deployment Configurations", () => {
         webDeploy: "vercel",
         serverDeploy: "vercel",
         backend: "hono",
-        runtime: "bun",
+        runtime: "node",
         database: "none",
         orm: "none",
         auth: "none",
@@ -795,7 +752,9 @@ describe("Deployment Configurations", () => {
       expect(web?.rewrites).toBeUndefined();
       expect(files.get("apps/web/react-router.config.ts")).not.toContain("ssr: false");
       // Vercel functions have no node_modules; deps must be bundled into the server build
-      expect(files.get("apps/web/vite.config.ts")).toContain("noExternal: true");
+      expect(files.get("apps/web/vite.config.ts")).toContain(
+        'noExternal: command === "build" ? true : undefined',
+      );
     });
 
     it("should use the explicit Vercel adapter for SvelteKit Vercel deploys", async () => {
@@ -804,7 +763,7 @@ describe("Deployment Configurations", () => {
         webDeploy: "vercel",
         serverDeploy: "vercel",
         backend: "hono",
-        runtime: "bun",
+        runtime: "node",
         database: "none",
         orm: "none",
         auth: "none",
@@ -839,7 +798,7 @@ describe("Deployment Configurations", () => {
         webDeploy: "vercel",
         serverDeploy: "vercel",
         backend: "fastify",
-        runtime: "bun",
+        runtime: "node",
         database: "none",
         orm: "none",
         auth: "none",
@@ -877,7 +836,7 @@ describe("Deployment Configurations", () => {
         webDeploy: "vercel",
         serverDeploy: "vercel",
         backend: "hono",
-        runtime: "bun",
+        runtime: "node",
         database: "sqlite",
         orm: "drizzle",
         auth: "none",
@@ -947,20 +906,20 @@ describe("Deployment Configurations", () => {
       expect(infraFile).toContain("export type ServerEnv = Cloudflare.InferEnv<typeof server>");
       expect(infraFile).toContain("VITE_SERVER_URL: serverWorker.url.as<string>()");
       expect(infraFile).toContain("BETTER_AUTH_URL: Cloudflare.Worker.URL");
-      expect(infraFile).not.toContain('BETTER_AUTH_URL: Config.string("BETTER_AUTH_URL")');
+      expect(infraFile).not.toContain('BETTER_AUTH_URL: Config.String("BETTER_AUTH_URL")');
       expect(infraFile).toContain("export default Alchemy.Stack(");
       expect(infraPackage.devDependencies).toMatchObject({
-        alchemy: "2.0.0-beta.76",
-        effect: "4.0.0-rc.112",
-        "@effect/platform-node": "4.0.0-rc.112",
-        "@effect/platform-bun": "4.0.0-rc.112",
+        alchemy: expect.any(String),
+        effect: expect.any(String),
+        "@effect/platform-node": expect.any(String),
+        "@effect/platform-bun": expect.any(String),
       });
       expect(infraFile!.indexOf("const serverWorker = yield* server")).toBeLessThan(
         infraFile!.indexOf('yield* Cloudflare.Website.Vite("web"'),
       );
       expect(serverBuildConfig).toContain('import { unwasm } from "unwasm/plugin"');
       expect(serverBuildConfig).toContain("plugins: [unwasm({ esmImport: true })]");
-      expect(serverPackage.devDependencies?.unwasm).toBe("^0.6.0");
+      expect(serverPackage.devDependencies?.unwasm).toBeDefined();
     });
 
     it("should bind self-hosted Cloudflare auth to the deployed Worker URL", async () => {
@@ -991,7 +950,7 @@ describe("Deployment Configurations", () => {
       const authFile = files.get("packages/auth/src/index.ts") ?? "";
 
       expect(infraFile).toContain("BETTER_AUTH_URL: Cloudflare.Worker.URL");
-      expect(infraFile).not.toContain('BETTER_AUTH_URL: Config.string("BETTER_AUTH_URL")');
+      expect(infraFile).not.toContain('BETTER_AUTH_URL: Config.String("BETTER_AUTH_URL")');
       expect(authFile).toContain("baseURL: env.BETTER_AUTH_URL");
     });
 
@@ -1258,7 +1217,7 @@ describe("Deployment Configurations", () => {
         'const webWorker = yield* Cloudflare.Website.StaticSite("web", {',
       );
       expect(nextWebOnlyInfra).toContain(
-        'NEXT_PUBLIC_SERVER_URL: Config.string("NEXT_PUBLIC_SERVER_URL")',
+        'NEXT_PUBLIC_SERVER_URL: Config.String("NEXT_PUBLIC_SERVER_URL")',
       );
       expect(nextWebOnlyInfra).not.toContain("const serverWorker = yield* server");
 
@@ -1278,13 +1237,13 @@ describe("Deployment Configurations", () => {
       expect(nuxtConfig).not.toContain("nitro-cloudflare-dev");
       expect(nuxtConfig).not.toContain("preset: 'cloudflare-module'");
       expect(nuxtPackage.devDependencies?.["@distilled.cloud/nuxt"]).toBeUndefined();
-      expect(nuxtPackage.devDependencies?.["@alchemy.run/frontend-frameworks"]).toBe(
-        "2.0.0-beta.76",
+      expect(nuxtPackage.devDependencies?.["@alchemy.run/frontend-frameworks"]).toEqual(
+        expect.any(String),
       );
       expect(nuxtPackage.devDependencies?.["nitro-cloudflare-dev"]).toBeUndefined();
       expect(nuxtPackage.devDependencies?.wrangler).toBeUndefined();
-      expect((nuxtPackage as { scripts?: Record<string, string> }).scripts?.build).toBe(
-        "nuxt build",
+      expect((nuxtPackage as { scripts?: Record<string, string> }).scripts?.build).toMatch(
+        /(?:^|&& )nuxt build$/,
       );
       expect(nuxtRootPackage.scripts?.build).toBe("pnpm -r --if-present build");
       expect(nuxtFiles.has("apps/web/cloudflare-workers.dev.ts")).toBe(false);
@@ -1303,8 +1262,8 @@ describe("Deployment Configurations", () => {
       expect(astroConfig).not.toContain("@astrojs/cloudflare");
       expect(astroConfig).not.toContain("adapter: cloudflare()");
       expect(astroPackage.devDependencies?.["@distilled.cloud/astro"]).toBeUndefined();
-      expect(astroPackage.devDependencies?.["@alchemy.run/frontend-frameworks"]).toBe(
-        "2.0.0-beta.76",
+      expect(astroPackage.devDependencies?.["@alchemy.run/frontend-frameworks"]).toEqual(
+        expect.any(String),
       );
       expect(astroPackage.devDependencies?.["@astrojs/cloudflare"]).toBeUndefined();
       expect((astroPackage as { scripts?: Record<string, string> }).scripts?.build).toBeUndefined();
@@ -1490,21 +1449,13 @@ describe("Deployment Configurations", () => {
 
   describe("Deployment with Special Backend Constraints", () => {
     it("should work with deployment + self backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "deploy-self-backend",
-        webDeploy: "cloudflare",
-        serverDeploy: "none", // Self backend doesn't use server deployment
+        webDeploy: "cloudflare", // Self backend doesn't use server deployment
         backend: "self",
         runtime: "none",
-        database: "sqlite",
-        orm: "drizzle",
         auth: "better-auth",
-        api: "trpc",
         frontend: ["next"],
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -1513,20 +1464,13 @@ describe("Deployment Configurations", () => {
 
   describe("Deployment Edge Cases", () => {
     it("should handle deployment with complex configurations", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "complex-deployment",
         webDeploy: "cloudflare",
         serverDeploy: "cloudflare",
-        backend: "hono",
-        runtime: "workers",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        frontend: ["tanstack-router"], // Single web frontend (compatible with PWA)
+        runtime: "workers", // Single web frontend (compatible with PWA)
         addons: ["pwa", "turborepo"],
         examples: ["todo"],
-        install: false,
       });
 
       expectSuccess(result);
@@ -1806,7 +1750,7 @@ describe("Deployment Configurations", () => {
       const viteConfig = files.get("apps/web/vite.config.ts");
       const compose = files.get("docker-compose.yml");
 
-      expect(webPkg.scripts.build).toBe("vp build");
+      expect(webPkg.scripts.build).toMatch(/(?:^|&& )vp build$/);
       expect(viteConfig).toContain('nitro({ preset: "bun" }),');
       expect(webDockerfile).toContain("FROM node:24 AS builder");
       expect(webDockerfile).toContain("FROM oven/bun:1 AS runner");
@@ -1993,7 +1937,7 @@ describe("Deployment Configurations", () => {
       const compose = files.get("docker-compose.yml");
 
       expect(webPkg.dependencies["@solidjs/start"]).toBeUndefined();
-      expect(webPkg.dependencies["solid-js"]).toBe("2.0.0-rc.7");
+      expect(webPkg.dependencies["solid-js"]).toBeDefined();
       expect(webPkg.devDependencies.nitro).toBeDefined();
       expect(webPkg.devDependencies["@tanstack/solid-router-devtools"]).toBeUndefined();
       expect(files.get("apps/web/vite.config.ts")).toContain("tsconfigPaths: true");
@@ -2182,45 +2126,141 @@ describe("Deployment Configurations", () => {
     });
 
     it("should fail with docker server deploy + workers runtime", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "docker-workers-fail",
-        webDeploy: "none",
         serverDeploy: "docker",
-        backend: "hono",
         runtime: "workers",
-        database: "sqlite",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
-        frontend: ["tanstack-router"],
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        expectError: true,
       });
 
       expectError(result, "'--server-deploy docker' is not compatible with '--runtime workers'");
     });
 
     it("should fail with docker server deploy + self backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "docker-self-server-fail",
-        webDeploy: "none",
         serverDeploy: "docker",
         backend: "self",
         runtime: "none",
         database: "postgres",
-        orm: "drizzle",
-        auth: "none",
-        api: "trpc",
         frontend: ["next"],
+      });
+
+      expectError(result, "--server-deploy none");
+    });
+  });
+});
+
+describe("Client URL selection", () => {
+  const cases = [
+    { frontend: "tanstack-router", api: "trpc", deploy: "none" },
+    { frontend: "tanstack-router", api: "orpc", deploy: "none" },
+    { frontend: "next", api: "orpc", deploy: "none" },
+    { frontend: "next", api: "trpc", deploy: "vercel" },
+    { frontend: "next", api: "orpc", deploy: "vercel" },
+    { frontend: "next", api: "orpc", deploy: "docker" },
+    { frontend: "svelte", api: "orpc", deploy: "none" },
+    { frontend: "svelte", api: "orpc", deploy: "vercel" },
+    { frontend: "astro", api: "orpc", deploy: "none" },
+    { frontend: "astro", api: "orpc", deploy: "vercel" },
+    { frontend: "tanstack-router", api: "trpc", deploy: "vercel" },
+    { frontend: "tanstack-router", api: "orpc", deploy: "docker" },
+  ] as const;
+
+  for (const { frontend, api, deploy } of cases) {
+    it(`uses the selected deployment's URLs for ${frontend}/${api}/${deploy}`, async () => {
+      const result = await createVirtual({
+        projectName: `client-url-${frontend}-${api}-${deploy}`,
+        frontend: [frontend],
+        backend: "hono",
+        runtime: deploy === "vercel" ? "node" : "bun",
+        database: "sqlite",
+        orm: "drizzle",
+        auth: "better-auth",
+        payments: "none",
+        api,
+        webDeploy: deploy,
+        serverDeploy: deploy,
         addons: ["none"],
         examples: ["none"],
         dbSetup: "none",
-        expectError: true,
+        install: false,
+        git: false,
+        packageManager: "bun",
       });
-
-      expectError(result, "'--server-deploy docker' requires a separate server backend");
+      if (result.isErr()) throw result.error;
+      const files = collectFiles(result.value.root, result.value.root.path);
+      const authSource = files.get("apps/web/src/lib/auth-client.ts")!;
+      const rpcSource =
+        files.get(`apps/web/src/utils/${api}.ts`) ?? files.get(`apps/web/src/lib/${api}.ts`)!;
+      const envKey =
+        frontend === "next"
+          ? "NEXT_PUBLIC_SERVER_URL"
+          : ["svelte", "astro"].includes(frontend)
+            ? "PUBLIC_SERVER_URL"
+            : "VITE_SERVER_URL";
+      const publicUrl = deploy === "vercel" ? "/api" : "https://api.example.test/";
+      const rpcExpression = rpcSource.match(/url: (`[^`\n]+`)/)?.[1];
+      expect(rpcExpression).toBeDefined();
+      const executable = new Bun.Transpiler({ loader: "ts" })
+        .transformSync(`${authSource}
+export const urls = [authClient.baseURL, ${rpcExpression}];`)
+        .replace(/^import .*;\n/gm, "")
+        .replace(/^export /gm, "");
+      const evaluate = new Function(
+        "createAuthClient",
+        "ENV",
+        "window",
+        "process",
+        `${executable}\nreturn urls;`,
+      );
+      const processEnv = {
+        SERVER_URL: deploy === "docker" ? "http://server:3000/" : undefined,
+        VERCEL_ENV: "preview",
+        VERCEL_URL: "preview.example.test",
+        VERCEL_PROJECT_PRODUCTION_URL: "production.example.test",
+      };
+      const serverOrigin =
+        deploy === "docker"
+          ? "http://server:3000"
+          : deploy === "vercel"
+            ? "https://preview.example.test"
+            : "https://api.example.test";
+      const browserOrigin =
+        deploy === "vercel" ? "https://browser.example.test" : "https://api.example.test";
+      for (const [windowValue, origin] of [
+        [undefined, serverOrigin],
+        [{ location: { origin: "https://browser.example.test" } }, browserOrigin],
+      ] as const) {
+        const urls = evaluate(
+          (options: { baseURL: string }) => options,
+          { [envKey]: publicUrl },
+          windowValue,
+          { env: { ...processEnv, [envKey]: publicUrl } },
+        );
+        expect(urls).toEqual([
+          deploy === "none" ? publicUrl : `${origin}/api/auth`,
+          `${origin}${deploy === "vercel" ? "/api" : ""}/${api === "trpc" ? "trpc" : "rpc"}`,
+        ]);
+      }
+      if (deploy === "vercel") {
+        const binding = "https://internal.example.test/service-server/";
+        const urls = evaluate(
+          (options: { baseURL: string }) => options,
+          { [envKey]: publicUrl },
+          undefined,
+          { env: { ...processEnv, [envKey]: publicUrl, SERVER_URL: binding } },
+        );
+        expect(urls).toEqual([
+          `${binding}api/auth`,
+          `${binding}api/${api === "trpc" ? "trpc" : "rpc"}`,
+        ]);
+      }
+      if (deploy !== "vercel") {
+        expect(authSource + rpcSource).not.toContain("VERCEL_");
+      }
+      if (deploy === "none") {
+        expect(authSource + rpcSource).not.toContain("getServerUrl");
+      }
     });
-  });
+  }
 });

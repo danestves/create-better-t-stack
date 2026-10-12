@@ -181,6 +181,11 @@ function processStandardAuthDeps(vfs: VirtualFileSystem, config: ProjectConfig):
     }
 
     if (apiExists) {
+      addPackageDependency({
+        vfs,
+        packagePath: "packages/api/package.json",
+        dependencies: ["@clerk/backend"],
+      });
       if (backend === "self" || backend === "hono" || backend === "elysia") {
         addPackageDependency({ vfs, packagePath: apiPath, dependencies: ["@clerk/backend"] });
       } else if (backend === "express") {
@@ -200,6 +205,10 @@ function processStandardAuthDeps(vfs: VirtualFileSystem, config: ProjectConfig):
   } else if (auth === "better-auth") {
     if (authExists) {
       const authDependencies: AvailableDependencies[] = ["better-auth"];
+      if (orm === "drizzle") {
+        // The adapter peers on ^core; pin it to Better Auth so npm cannot install incompatible types.
+        authDependencies.push("@better-auth/core", "@better-auth/drizzle-adapter", "drizzle-orm");
+      }
       if (orm === "mongoose") {
         authDependencies.push("mongodb");
       }

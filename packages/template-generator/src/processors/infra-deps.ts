@@ -1,6 +1,7 @@
 import type { ProjectConfig } from "@better-t-stack/types";
 
 import type { VirtualFileSystem } from "../core/virtual-fs";
+import { getPrismaWebsiteFramework } from "../generators/alchemy/plan";
 import { addPackageDependency } from "../utils/add-deps";
 
 export function processInfraDeps(vfs: VirtualFileSystem, config: ProjectConfig): void {
@@ -8,9 +9,17 @@ export function processInfraDeps(vfs: VirtualFileSystem, config: ProjectConfig):
   if (!vfs.exists(infraPath)) return;
 
   const { serverDeploy, webDeploy } = config;
+  if (getPrismaWebsiteFramework(config)) {
+    addPackageDependency({
+      vfs,
+      packagePath: infraPath,
+      devDependencies: ["@alchemy.run/frontend-frameworks", "@vercel/nft"],
+    });
+  }
   if (
     ["cloudflare", "prisma"].includes(serverDeploy) ||
-    ["cloudflare", "prisma"].includes(webDeploy)
+    ["cloudflare", "prisma"].includes(webDeploy) ||
+    config.addons.includes("axiom")
   ) {
     addPackageDependency({
       vfs,

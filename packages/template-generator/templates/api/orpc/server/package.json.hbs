@@ -1,15 +1,14 @@
 {
   "name": "@{{projectName}}/api",
   "exports": {
-    ".": {
-      "default": "./src/index.ts"
-    },
-    "./*": {
-      "default": "./src/*.ts"
-    }
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
   },
   "type": "module",
-  "scripts": {},
+  "scripts": {
+    "build": "tsc -b",
+    "check-types": "tsc -b"
+  },
   "devDependencies": {},
   "dependencies": {}
 }

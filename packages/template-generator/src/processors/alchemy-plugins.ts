@@ -35,6 +35,7 @@ function processManagedPrismaMigrations(vfs: VirtualFileSystem, config: ProjectC
 
   if (!usesAlchemyManagedDatabase(config) || !hasInitialModels) {
     vfs.deleteFile(generatedMigration);
+    vfs.deleteDirectory(`${migrationRoot}/0000_init`);
     vfs.deleteFile(migrationLock);
     return;
   }
@@ -79,17 +80,14 @@ function d1DatabasesBlock(config: ProjectConfig): string {
   const migrationsDir = isPrisma
     ? "../../packages/db/prisma/migrations"
     : "../../packages/db/src/migrations";
-  // prisma nests migrations as <timestamp>_<name>/migration.sql
-  const pattern = isPrisma
-    ? `,\n      "migrations_pattern": "${migrationsDir}/*/migration.sql"`
-    : "";
   return `,
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "${config.projectName}-db-local",
       "database_id": "local",
-      "migrations_dir": "${migrationsDir}"${pattern}
+      "migrations_dir": "${migrationsDir}",
+      "migrations_pattern": "${migrationsDir}/*/migration.sql"
     }
   ]`;
 }
@@ -136,7 +134,6 @@ function processReactRouterAlchemy(vfs: VirtualFileSystem) {
       `import { createRequestHandler } from "react-router";
 
 const requestHandler = createRequestHandler(
-	// @ts-expect-error - virtual module provided by React Router at build time
 	() => import("virtual:react-router/server-build"),
 	import.meta.env.MODE,
 );
@@ -213,8 +210,6 @@ export default async function handleRequest(
   }
 }
 
-// OpenNext builds the Worker artifact that packages/infra deploys with
-// `bundle: false`; it reads wrangler.jsonc for the worker/assets layout.
 function processNextAlchemy(vfs: VirtualFileSystem, config: ProjectConfig) {
   const webAppDir = "apps/web";
 

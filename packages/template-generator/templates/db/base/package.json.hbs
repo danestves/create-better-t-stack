@@ -2,13 +2,16 @@
   "name": "@{{projectName}}/db",
   "type": "module",
   "exports": {
-    ".": {
-      "default": "./src/index.ts"
-    },
-    "./*": {
-      "default": "./src/*.ts"
-    }
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
   },
-  "scripts": {},
+  "scripts": {
+    {{#if (eq api "orpc")}}
+    "build": "tsc -b",
+    "check-types": "tsc -b"
+    {{else}}
+    "check-types": "tsc --noEmit"
+    {{/if}}
+  },
   "devDependencies": {}
 }

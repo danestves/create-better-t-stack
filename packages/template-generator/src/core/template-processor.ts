@@ -92,6 +92,11 @@ Handlebars.registerHelper(
   (backend, dbSetup, webDeploy, serverDeploy, dbSetupOptions) =>
     usesAlchemyManagedDatabase({ backend, dbSetup, webDeploy, serverDeploy, dbSetupOptions }),
 );
+// Vercel Services pass the original request path to the server service, so a
+// server deployed alongside its web app serves the public /api paths directly
+Handlebars.registerHelper("apiPrefix", (webDeploy, serverDeploy) =>
+  webDeploy === "vercel" && serverDeploy === "vercel" ? "/api" : "",
+);
 Handlebars.registerHelper(
   "usesRequestScopedCloudflareEnv",
   (backend, webDeploy, frontend) =>
@@ -101,18 +106,20 @@ Handlebars.registerHelper(
     (frontend.includes("nuxt") || frontend.includes("svelte")),
 );
 
-// Shared across every web client template (oRPC/tRPC/better-auth) so the
-// same-origin URL normalization for Vercel deploys has one source of truth.
-const getServerUrlSource = `function getServerUrl(url: string) {
-	const processEnv = (globalThis as {
-		process?: { env?: Record<string, string | undefined> };
-	}).process?.env;
+const getServerUrlSource = `{{#if (and (eq webDeploy serverDeploy) (or (eq webDeploy "vercel") (eq webDeploy "docker")))}}
+function getServerUrl(url: string) {
+	const processEnv = typeof process === "undefined" ? undefined : process.env;
 	if (typeof window === "undefined" && processEnv?.SERVER_URL) {
+{{#if (eq webDeploy "vercel")}}
+		return new URL("api", processEnv.SERVER_URL).toString().replace(/\\/$/, "");
+{{else}}
 		return processEnv.SERVER_URL.endsWith("/")
 			? processEnv.SERVER_URL.slice(0, -1)
 			: processEnv.SERVER_URL;
+{{/if}}
 	}
 
+{{#if (eq webDeploy "vercel")}}
 	const normalized = url.endsWith("/") ? url.slice(0, -1) : url;
 
 	if (!normalized.startsWith("/")) {
@@ -133,7 +140,11 @@ const getServerUrlSource = `function getServerUrl(url: string) {
 	}
 
 	return \`http://localhost:3000\${normalized}\`;
-}`;
+{{else}}
+	return url.endsWith("/") ? url.slice(0, -1) : url;
+{{/if}}
+}
+{{/if}}`;
 
 Handlebars.registerPartial("getServerUrl", getServerUrlSource);
 Handlebars.registerPartial("getServerUrlSpaces", getServerUrlSource.replaceAll("\t", "  "));

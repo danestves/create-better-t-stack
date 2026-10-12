@@ -15,6 +15,14 @@ export function processDeployDeps(vfs: VirtualFileSystem, config: ProjectConfig)
   const isVercelServer = serverDeploy === "vercel";
   const isBackendSelf = backend === "self";
 
+  if (isPrismaWeb) {
+    addPackageDependency({
+      vfs,
+      packagePath: "apps/web/package.json",
+      devDependencies: ["@alchemy.run/frontend-frameworks"],
+    });
+  }
+
   if (
     !isCloudflareWeb &&
     !isCloudflareServer &&
@@ -66,16 +74,16 @@ export function processDeployDeps(vfs: VirtualFileSystem, config: ProjectConfig)
   }
 
   if (isVercelWeb || isVercelServer) {
-    // Env file parsing uses node:util; only the Vercel CLI is needed.
+    // Env file parsing uses node:util; the Vercel CLI runs through the package runner
     addPackageDependency({
       vfs,
       packagePath: "package.json",
-      devDependencies: ["@types/node", "tsx", "vercel"],
+      devDependencies: ["@types/node", "tsx"],
     });
   }
 
-  if ((isVercelWeb || isPrismaWeb) && frontend.includes("tanstack-start")) {
-    // Nitro emits the standalone server artifact consumed by both deployment providers.
+  if ((isVercelWeb || (isPrismaWeb && backend !== "none")) && frontend.includes("tanstack-start")) {
+    // Nitro emits the standalone server artifact consumed by Compute and Vercel.
     const webPkgPath = "apps/web/package.json";
     if (vfs.exists(webPkgPath)) {
       addPackageDependency({ vfs, packagePath: webPkgPath, dependencies: ["nitro"] });

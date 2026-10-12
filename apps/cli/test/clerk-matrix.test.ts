@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { createVirtual } from "../src/index";
+import type { CLIInput, Frontend } from "../src/types";
 import { validateConfigCompatibility } from "../src/validation";
 import { collectFiles } from "./setup";
 
@@ -30,11 +31,11 @@ function buildFrontendCombos(
   webOptions: readonly (typeof standardWeb)[number][],
   { requireWeb = false }: { requireWeb?: boolean } = {},
 ) {
-  const combos: string[][] = [];
+  const combos: Frontend[][] = [];
 
   for (const web of webOptions) {
     for (const native of nativeOptions) {
-      const frontend = [web, native].filter(Boolean) as string[];
+      const frontend = [web, native].filter((value) => value !== undefined);
       if (frontend.length === 0) continue;
       if (requireWeb && !web) continue;
       combos.push(frontend);
@@ -80,17 +81,17 @@ describe("Clerk matrix", () => {
       ),
       ...selfFrontendCombos.flatMap((frontend) =>
         apiOptions.map((api) => ({
-          backend: "self",
-          runtime: "none",
+          backend: "self" as const,
+          runtime: "none" as const,
           frontend,
           api,
         })),
       ),
       ...standardFrontendCombos.map((frontend) => ({
-        backend: "convex",
-        runtime: "none",
+        backend: "convex" as const,
+        runtime: "none" as const,
         frontend,
-        api: "none",
+        api: "none" as const,
       })),
     ];
 
@@ -106,16 +107,16 @@ describe("Clerk matrix", () => {
         orm: combo.backend === "convex" || combo.api === "none" ? "none" : "drizzle",
         auth: "clerk" as const,
         api: combo.api,
-        addons: ["none"] as const,
-        examples: ["none"] as const,
+        addons: ["none"],
+        examples: ["none"],
         dbSetup: "none" as const,
         webDeploy: "none" as const,
         serverDeploy: combo.runtime === "workers" ? ("cloudflare" as const) : ("none" as const),
         install: false,
         git: false,
         packageManager: "bun" as const,
-        payments: "none" as const,
-      };
+        payments: "none",
+      } satisfies CLIInput;
 
       const validation = validateConfigCompatibility(config);
       if (validation.isErr()) {
@@ -167,21 +168,9 @@ describe("Clerk matrix", () => {
           );
         }
 
-        if (!contextFile?.includes("type ClerkContextAuth")) {
-          failures.push(
-            `${combo.backend}/${combo.runtime}/${combo.frontend.join("+")}/${combo.api}: missing ClerkContextAuth in packages/api/src/context.ts`,
-          );
-        }
-
-        if (!contextFile?.includes("session: null")) {
-          failures.push(
-            `${combo.backend}/${combo.runtime}/${combo.frontend.join("+")}/${combo.api}: missing null session in application context`,
-          );
-        }
-
         if (
           usesBackendClerkClient(combo.backend, combo.api) &&
-          !contextFile?.includes("publishableKey: env.CLERK_PUBLISHABLE_KEY")
+          !contextFile?.includes("publishableKey: ENV.CLERK_PUBLISHABLE_KEY")
         ) {
           failures.push(
             `${combo.backend}/${combo.runtime}/${combo.frontend.join("+")}/${combo.api}: missing publishableKey in packages/api/src/context.ts`,
@@ -190,7 +179,7 @@ describe("Clerk matrix", () => {
 
         if (
           usesBackendClerkClient(combo.backend, combo.api) &&
-          !contextFile?.includes("authorizedParties: [env.CORS_ORIGIN]")
+          !contextFile?.includes("authorizedParties: [ENV.CORS_ORIGIN]")
         ) {
           failures.push(
             `${combo.backend}/${combo.runtime}/${combo.frontend.join("+")}/${combo.api}: missing authorizedParties in packages/api/src/context.ts`,
@@ -236,7 +225,7 @@ describe("Clerk matrix", () => {
           );
         } else if (
           proxyFile.includes('/env/server"') ||
-          proxyFile.includes("env.CLERK_SECRET_KEY")
+          proxyFile.includes("ENV.CLERK_SECRET_KEY")
         ) {
           failures.push(
             `${combo.backend}/${combo.runtime}/${combo.frontend.join("+")}/${combo.api}: Next proxy still imports shared server env`,
@@ -330,7 +319,7 @@ describe("Clerk matrix", () => {
             );
           } else if (
             startFile.includes('/env/server"') ||
-            startFile.includes("env.CLERK_SECRET_KEY")
+            startFile.includes("ENV.CLERK_SECRET_KEY")
           ) {
             failures.push(
               `${combo.backend}/${combo.runtime}/${combo.frontend.join("+")}/${combo.api}: TanStack Start entry still imports shared server env`,

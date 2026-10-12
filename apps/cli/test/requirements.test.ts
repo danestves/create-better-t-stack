@@ -3,7 +3,6 @@ import { describe, expect, it } from "bun:test";
 import type { ProjectConfig } from "../src/types";
 import {
   PACKAGE_MANAGER_VERSION_RANGES,
-  RECOMMENDED_BUN_VERSION_RANGE,
   getBaselineRequirements,
   getLocalVersionRequirements,
   getLocalToolRecommendations,
@@ -15,9 +14,15 @@ describe("baseline requirements (before prompts)", () => {
   it("covers only the package manager and the host Node.js, never the stack", () => {
     expect(getBaselineRequirements("pnpm", "node")).toEqual([
       expect.objectContaining({ tool: "pnpm", range: PACKAGE_MANAGER_VERSION_RANGES.pnpm }),
-      expect.objectContaining({ tool: "node", range: ">=22.0.0" }),
+      expect.objectContaining({ tool: "node", reason: "create-better-t-stack" }),
     ]);
     expect(getBaselineRequirements(undefined, "bun")).toEqual([]);
+  });
+
+  it("rejects Node versions below the CLI formatter requirement", () => {
+    const requirements = getBaselineRequirements(undefined, "node");
+    expect(validateRequirements(requirements, { node: "22.11.0" }).isErr()).toBe(true);
+    expect(validateRequirements(requirements, { node: "22.12.0" }).isOk()).toBe(true);
   });
 
   it("fails an outdated pnpm before any stack is chosen", () => {
@@ -87,15 +92,6 @@ function config(overrides: Partial<RequirementConfig> = {}): RequirementConfig {
 }
 
 describe("local tool requirements", () => {
-  it("tracks the package-manager features emitted by generated projects", () => {
-    expect(PACKAGE_MANAGER_VERSION_RANGES).toEqual({
-      bun: ">=1.3.3",
-      npm: ">=11.16.0",
-      pnpm: ">=10.26.0",
-    });
-    expect(RECOMMENDED_BUN_VERSION_RANGE).toBe(">=1.4.0");
-  });
-
   it("recommends Bun 1.4 without rejecting the Varlock-compatible minimum", () => {
     const project = config();
 
@@ -208,15 +204,39 @@ describe("local tool requirements", () => {
     ).toBe(true);
   });
 
+  it("checks Vite+ Node release lines even when Bun is selected", () => {
+    const project = config({ addons: ["vite-plus"], frontend: [] });
+    for (const node of ["22.18.0", "24.11.0", "26.0.0"]) {
+      expect(validateLocalToolVersions(project, { bun: "1.4.2", node }, "bun").isOk()).toBe(true);
+    }
+    for (const node of ["20.19.0", "22.17.0", "23.11.0", "24.10.0", "25.1.0"]) {
+      const result = validateLocalToolVersions(project, { bun: "1.4.2", node }, "bun");
+      expect(result.isErr()).toBe(true);
+      expect(result.isErr() ? result.error.message : "").toContain("Vite+");
+    }
+  });
+
+  it("checks the Skills CLI's Node requirement even when Bun is selected", () => {
+    const project = config({ addons: ["skills"] });
+    for (const node of [undefined, "22.19.0"]) {
+      const result = validateLocalToolVersions(project, { bun: "1.4.2", node }, "bun");
+      expect(result.isErr()).toBe(true);
+      expect(result.isErr() ? result.error.message : "").toContain("the Skills CLI");
+    }
+    expect(
+      validateLocalToolVersions(project, { bun: "1.4.2", node: "22.20.0" }, "bun").isOk(),
+    ).toBe(true);
+  });
+
   it.each([
     [{ examples: ["ai"] }, "21.7.0", "22.3.0", "AI SDK 7"],
     [{ orm: "mongoose" }, "20.18.0", "22.3.0", "Mongoose 9 and MongoDB 7"],
     [{ addons: ["oxlint"] }, "20.18.0", "22.12.0", "Oxlint and Oxfmt"],
     [
       { addons: ["ultracite"], addonOptions: { ultracite: { linter: "oxlint" } } },
-      "20.18.0",
-      "22.12.0",
-      "Oxlint and Oxfmt",
+      "22.17.0",
+      "22.18.0",
+      "the Ultracite CLI",
     ],
   ] satisfies Array<[Partial<RequirementConfig>, string, string, string]>)(
     "checks dependency runtime requirements for %#",

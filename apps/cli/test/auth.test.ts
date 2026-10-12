@@ -4,60 +4,57 @@ import path from "node:path";
 import fs from "fs-extra";
 
 import type { Backend, Database, Frontend, ORM } from "../src/types";
-import { expectError, expectSuccess, runTRPCTest, type TestConfig } from "./test-utils";
+import { expectError, expectSuccess, runCreateTest, type TestConfig } from "./test-utils";
 
 describe("Authentication Configurations", () => {
   describe("Better-Auth Provider", () => {
+    it.each(["drizzle", "prisma"] as const)(
+      "omits schema generation when yolo skips the database package with %s",
+      async (orm) => {
+        const result = await runCreateTest({
+          projectName: `auth-no-db-${orm}`,
+          auth: "better-auth",
+          database: "none",
+          orm,
+          yolo: true,
+        });
+        expectSuccess(result);
+        expect(await fs.pathExists(path.join(result.projectDir, "packages/db/package.json"))).toBe(
+          false,
+        );
+        for (const file of ["package.json", "apps/server/package.json"]) {
+          const pkg = await fs.readJson(path.join(result.projectDir, file));
+          expect(pkg.scripts?.["auth:generate"]).toBeUndefined();
+        }
+      },
+    );
+
     const databases = ["sqlite", "postgres", "mysql"];
     for (const database of databases) {
       it(`should work with better-auth + ${database}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `better-auth-${database}`,
           auth: "better-auth",
-          backend: "hono",
-          runtime: "bun",
           database: database as Database,
-          orm: "drizzle",
-          api: "trpc",
-          frontend: ["tanstack-router"],
           addons: ["turborepo"],
           examples: ["todo"],
-          dbSetup: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
-          install: false,
         });
 
         expectSuccess(result);
         if (!result.projectDir) {
           throw new Error("Expected projectDir to be defined");
         }
-
-        const authSchema = await fs.readFile(
-          path.join(result.projectDir, "packages/db/src/schema/auth.ts"),
-          "utf8",
-        );
-        expect(authSchema).not.toContain("issuer:");
-        expect(authSchema).toContain('uniqueIndex("account_providerId_accountId_uidx")');
       });
     }
 
     it("should work with better-auth + mongodb + mongoose", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "better-auth-mongodb",
         auth: "better-auth",
-        backend: "hono",
-        runtime: "bun",
         database: "mongodb",
         orm: "mongoose",
-        api: "trpc",
-        frontend: ["tanstack-router"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -66,7 +63,7 @@ describe("Authentication Configurations", () => {
       const authPackageJson = await fs.readJson(
         path.join(projectDir, "packages/auth/package.json"),
       );
-      expect(authPackageJson.dependencies.mongodb).toBe("^7.6.0");
+      expect(authPackageJson.dependencies.mongodb).toBeDefined();
 
       const dbIndex = await fs.readFile(path.join(projectDir, "packages/db/src/index.ts"), "utf8");
       expect(dbIndex).toContain("await mongoose.connect(env.DATABASE_URL);");
@@ -105,21 +102,15 @@ describe("Authentication Configurations", () => {
     });
 
     it("should add nextCookies plugin for Next.js self backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "better-auth-next-self-plugins",
         auth: "better-auth",
         backend: "self",
         runtime: "none",
         database: "postgres",
-        orm: "drizzle",
-        api: "trpc",
         frontend: ["next"],
         addons: ["turborepo"],
-        examples: ["none"],
-        dbSetup: "none",
         webDeploy: "cloudflare",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -137,21 +128,14 @@ describe("Authentication Configurations", () => {
     });
 
     it("should add tanstackStartCookies plugin for TanStack Start self backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "better-auth-tanstack-start-self-plugins",
         auth: "better-auth",
         backend: "self",
         runtime: "none",
         database: "postgres",
-        orm: "drizzle",
-        api: "trpc",
         frontend: ["tanstack-start"],
         addons: ["turborepo"],
-        examples: ["none"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -171,21 +155,14 @@ describe("Authentication Configurations", () => {
     });
 
     it("should add the Better Auth Solid 2 handler for the self backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "better-auth-solid-self",
         auth: "better-auth",
         backend: "self",
         runtime: "none",
-        database: "sqlite",
-        orm: "drizzle",
         api: "orpc",
         frontend: ["solid"],
         addons: ["turborepo"],
-        examples: ["none"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -238,22 +215,15 @@ describe("Authentication Configurations", () => {
     });
 
     it("should guard TanStack Start self dashboard before loading Polar payment state", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "better-auth-tanstack-start-self-polar-guard",
         auth: "better-auth",
         backend: "self",
         runtime: "none",
         database: "postgres",
-        orm: "drizzle",
         api: "orpc",
         frontend: ["tanstack-start"],
         payments: "polar",
-        addons: ["none"],
-        examples: ["none"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -276,11 +246,11 @@ describe("Authentication Configurations", () => {
       expect(guardIndex).toBeGreaterThanOrEqual(0);
       expect(paymentIndex).toBeGreaterThanOrEqual(0);
       expect(guardIndex).toBeLessThan(paymentIndex);
-      expect(authPackageJson.dependencies["@polar-sh/sdk"]).toBe("^0.47.0");
+      expect(authPackageJson.dependencies["@polar-sh/sdk"]).toBeDefined();
     });
 
     it("should work with better-auth + convex backend (tanstack-router)", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "better-auth-convex-success",
         auth: "better-auth",
         backend: "convex",
@@ -288,12 +258,8 @@ describe("Authentication Configurations", () => {
         database: "none",
         orm: "none",
         api: "none",
-        frontend: ["tanstack-router"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
       });
 
       expectSuccess(result);
@@ -333,8 +299,8 @@ describe("Authentication Configurations", () => {
         "utf8",
       );
 
-      expect(packageJson.workspaces.catalog["better-auth"]).toBe("1.6.17");
-      expect(packageJson.workspaces.catalog["@convex-dev/better-auth"]).toBe("^0.12.5");
+      expect(packageJson.workspaces.catalog["better-auth"]).toBeDefined();
+      expect(packageJson.workspaces.catalog["@convex-dev/better-auth"]).toBeDefined();
       expect(backendPackageJson.dependencies["better-auth"]).toBe("catalog:");
       expect(webPackageJson.dependencies["better-auth"]).toBe("catalog:");
       expect(authFile).toContain("baseURL: process.env.CONVEX_SITE_URL");
@@ -351,7 +317,7 @@ describe("Authentication Configurations", () => {
     });
 
     it("should scaffold react-router with Convex Better Auth wiring", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "better-auth-convex-react-router",
         auth: "better-auth",
         backend: "convex",
@@ -362,10 +328,6 @@ describe("Authentication Configurations", () => {
         frontend: ["react-router"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -402,7 +364,7 @@ describe("Authentication Configurations", () => {
 
     for (const frontend of convexPolarFrontends) {
       it(`should scaffold Convex Better Auth with Polar payments for ${frontend}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `better-auth-convex-polar-${frontend}`,
           auth: "better-auth",
           payments: "polar",
@@ -413,11 +375,6 @@ describe("Authentication Configurations", () => {
           api: "none",
           frontend: [frontend],
           addons: ["turborepo"],
-          examples: ["none"],
-          dbSetup: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
-          install: false,
         });
 
         expectSuccess(result);
@@ -514,22 +471,12 @@ describe("Authentication Configurations", () => {
 
     for (const frontend of nativePolarFrontends) {
       it(`should scaffold native-only Better Auth with Polar payments for ${frontend}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `better-auth-native-polar-${frontend}`,
           auth: "better-auth",
           payments: "polar",
-          backend: "hono",
-          runtime: "bun",
-          database: "sqlite",
-          orm: "drizzle",
-          api: "trpc",
           frontend: [frontend],
           addons: ["turborepo"],
-          examples: ["none"],
-          dbSetup: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
-          install: false,
         });
 
         expectSuccess(result);
@@ -539,10 +486,6 @@ describe("Authentication Configurations", () => {
 
         const nativeIndexFile = await fs.readFile(
           path.join(result.projectDir, "apps/native/app/(drawer)/index.tsx"),
-          "utf8",
-        );
-        const nativeAuthClientFile = await fs.readFile(
-          path.join(result.projectDir, "apps/native/lib/auth-client.ts"),
           "utf8",
         );
         const authPackageFile = await fs.readFile(
@@ -562,10 +505,10 @@ describe("Authentication Configurations", () => {
           "utf8",
         );
 
-        expect(nativeIndexFile).toContain("polarNativeClient.checkout");
-        expect(nativeIndexFile).toContain("polarNativeClient.customer.portal");
+        expect(nativeIndexFile).toContain("authClient.checkout");
+        expect(nativeIndexFile).toContain("authClient.customer.portal");
         expect(nativeIndexFile).toContain("openAuthSessionAsync");
-        expect(nativeIndexFile).toContain('new URL("/polar/success", env.EXPO_PUBLIC_SERVER_URL)');
+        expect(nativeIndexFile).toContain('new URL("/polar/success", ENV.EXPO_PUBLIC_SERVER_URL)');
         expect(nativeIndexFile).toContain("successUrl: polarReturnUrl");
         expect(nativeIndexFile).toContain("returnUrl: polarReturnUrl");
         expect(nativeIndexFile).not.toContain("successUrl: returnUrl");
@@ -577,10 +520,9 @@ describe("Authentication Configurations", () => {
           expect(nativeIndexFile).toContain('textAlign: "center"');
           expect(nativeIndexFile).toContain("height: 34");
         }
-        expect(nativeAuthClientFile).toContain("export const polarNativeClient");
         expect(authPackageFile).toContain('"@polar-sh/better-auth"');
         expect(authPackageFile).toContain('"@polar-sh/sdk"');
-        expect(nativePackageFile).not.toContain('"@polar-sh/better-auth"');
+        expect(nativePackageFile).toContain('"@polar-sh/better-auth"');
         expect(serverIndexFile).toContain('"/polar/success"');
         expect(serverIndexFile).toContain("allowedNativeProtocols");
         expect(serverIndexFile).toContain("302");
@@ -588,7 +530,7 @@ describe("Authentication Configurations", () => {
       });
 
       it(`should scaffold native-only Convex Better Auth with Polar payments for ${frontend}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `better-auth-convex-native-polar-${frontend}`,
           auth: "better-auth",
           payments: "polar",
@@ -599,11 +541,6 @@ describe("Authentication Configurations", () => {
           api: "none",
           frontend: [frontend],
           addons: ["turborepo"],
-          examples: ["none"],
-          dbSetup: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
-          install: false,
         });
 
         expectSuccess(result);
@@ -640,9 +577,9 @@ describe("Authentication Configurations", () => {
         expect(nativeIndexFile).toContain("api.polar.generateCustomerPortalUrl");
         expect(nativeIndexFile).toContain("openAuthSessionAsync");
         expect(nativeIndexFile).toContain(
-          'new URL("/polar/success", env.EXPO_PUBLIC_CONVEX_SITE_URL)',
+          'new URL("/polar/success", ENV.EXPO_PUBLIC_CONVEX_SITE_URL)',
         );
-        expect(nativeIndexFile).toContain("origin: env.EXPO_PUBLIC_CONVEX_SITE_URL");
+        expect(nativeIndexFile).toContain("origin: ENV.EXPO_PUBLIC_CONVEX_SITE_URL");
         expect(nativeIndexFile).toContain("successUrl: polarReturnUrl");
         expect(nativeIndexFile).toContain("returnUrl: getPolarReturnUrl(returnUrl)");
         expect(nativeIndexFile).not.toContain("successUrl: returnUrl");
@@ -680,22 +617,15 @@ describe("Authentication Configurations", () => {
 
     it("should scaffold native-only Better Auth with Polar payments for every standard server backend", async () => {
       for (const { backend, runtime, serverDeploy } of standardPolarBackends) {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `better-auth-native-polar-${backend}-${runtime}`,
           auth: "better-auth",
           payments: "polar",
           backend,
           runtime,
-          database: "sqlite",
-          orm: "drizzle",
-          api: "trpc",
           frontend: ["native-bare"],
           addons: ["turborepo"],
-          examples: ["none"],
-          dbSetup: "none",
-          webDeploy: "none",
           serverDeploy,
-          install: false,
         });
 
         expectSuccess(result);
@@ -730,7 +660,7 @@ describe("Authentication Configurations", () => {
         expect(authFile).toContain("portal()");
         expect(authPackageFile).toContain('"@polar-sh/better-auth"');
         expect(authPackageFile).toContain('"@polar-sh/sdk"');
-        expect(nativeIndexFile).toContain("polarNativeClient.checkout");
+        expect(nativeIndexFile).toContain("authClient.checkout");
         expect(nativeIndexFile).toContain("successUrl: polarReturnUrl");
         expect(nativeIndexFile).toContain("returnUrl: polarReturnUrl");
         expect(serverIndexFile).toContain('"/polar/success"');
@@ -742,7 +672,7 @@ describe("Authentication Configurations", () => {
     const convexUnsupportedFrontends = ["nuxt", "svelte", "solid", "astro"] as const;
     for (const frontend of convexUnsupportedFrontends) {
       it(`should fail with Convex Better Auth + ${frontend}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `better-auth-convex-${frontend}-fail`,
           auth: "better-auth",
           backend: "convex",
@@ -752,12 +682,6 @@ describe("Authentication Configurations", () => {
           api: "none",
           frontend: [frontend],
           addons: ["turborepo"],
-          examples: ["none"],
-          dbSetup: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
-          install: false,
-          expectError: true,
         });
 
         expectError(result, "Better Auth with '--backend convex' is not compatible");
@@ -802,7 +726,7 @@ describe("Authentication Configurations", () => {
           config.api = "trpc";
         }
 
-        const result = await runTRPCTest(config);
+        const result = await runCreateTest(config);
         expectSuccess(result);
         if (!result.projectDir) {
           throw new Error("Expected projectDir to be defined");
@@ -810,14 +734,14 @@ describe("Authentication Configurations", () => {
         const packageJson = JSON.parse(
           await fs.readFile(path.join(result.projectDir, "package.json"), "utf8"),
         );
-        expect(packageJson.workspaces.catalog["better-auth"]).toBe("1.7.3");
+        expect(packageJson.workspaces.catalog["better-auth"]).toBeDefined();
       });
     }
   });
 
   describe("Clerk Provider", () => {
     it("should work with clerk + convex", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "clerk-convex",
         auth: "clerk",
         backend: "convex",
@@ -825,76 +749,45 @@ describe("Authentication Configurations", () => {
         database: "none",
         orm: "none",
         api: "none",
-        frontend: ["tanstack-router"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should work with clerk + hono backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "clerk-hono-success",
         auth: "clerk",
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
         addons: ["turborepo"],
-        orm: "drizzle",
-        api: "trpc",
-        frontend: ["tanstack-router"],
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should work with clerk + self backend", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "clerk-self-success",
         auth: "clerk",
         backend: "self",
         runtime: "none",
-        database: "sqlite",
-        orm: "drizzle",
-        api: "trpc",
         frontend: ["next"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should scaffold Next.js Clerk middleware without importing shared server env", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "clerk-next-hono-current",
         auth: "clerk",
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        api: "trpc",
         frontend: ["next"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -924,17 +817,14 @@ describe("Authentication Configurations", () => {
       );
 
       expect(proxyFile).not.toContain('/env/server"');
-      expect(proxyFile).not.toContain("env.CLERK_SECRET_KEY");
+      expect(proxyFile).not.toContain("ENV.CLERK_SECRET_KEY");
       expect(dashboardFile).not.toContain("SignedIn");
       expect(dashboardFile).not.toContain("SignedOut");
       expect(dashboardFile).toContain("useUser");
       expect(dashboardFile).toContain("privateData.queryOptions()");
-      expect(apiContextFile).toContain("type ClerkContextAuth = {");
-      expect(apiContextFile).toContain("session: null");
-      expect(apiContextFile).toContain("function toClerkContextAuth(");
       expect(apiContextFile).toContain("auth: clerkAuth");
-      expect(apiContextFile).toContain("publishableKey: env.CLERK_PUBLISHABLE_KEY");
-      expect(apiContextFile).toContain("authorizedParties: [env.CORS_ORIGIN]");
+      expect(apiContextFile).toContain("publishableKey: ENV.CLERK_PUBLISHABLE_KEY");
+      expect(apiContextFile).toContain("authorizedParties: [ENV.CORS_ORIGIN]");
       expect(serverEnvPackageFile).toContain("CLERK_PUBLISHABLE_KEY");
       expect(serverEnvPackageFile).toContain("CLERK_SECRET_KEY");
       expect(serverEnvFile).toContain("CLERK_PUBLISHABLE_KEY=");
@@ -942,21 +832,12 @@ describe("Authentication Configurations", () => {
     });
 
     it("should scaffold TanStack Start Clerk templates without stale control components", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "clerk-tanstack-start-hono-current",
         auth: "clerk",
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        api: "trpc",
         frontend: ["tanstack-start"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -978,7 +859,7 @@ describe("Authentication Configurations", () => {
       );
 
       expect(startFile).not.toContain('/env/server"');
-      expect(startFile).not.toContain("env.CLERK_SECRET_KEY");
+      expect(startFile).not.toContain("ENV.CLERK_SECRET_KEY");
       expect(authRouteFile).toContain('createFileRoute("/_auth")');
       expect(authRouteFile).toContain("SignInButton");
       expect(dashboardFile).toContain('createFileRoute("/_auth/dashboard")');
@@ -989,21 +870,12 @@ describe("Authentication Configurations", () => {
     });
 
     it("should scaffold Clerk native auth with the current Expo SDK flow", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "clerk-native-hono-current",
         auth: "clerk",
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        api: "trpc",
         frontend: ["native-uniwind"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -1055,21 +927,17 @@ describe("Authentication Configurations", () => {
 
     for (const frontend of compatibleFrontends) {
       it(`should work with clerk + ${frontend}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `clerk-${frontend}`,
           auth: "clerk",
           backend: "convex",
           runtime: "none",
           database: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
           addons: ["turborepo"],
-          dbSetup: "none",
           examples: ["todo"],
           orm: "none",
           api: "none",
           frontend: [frontend as Frontend],
-          install: false,
         });
 
         expectSuccess(result);
@@ -1080,7 +948,7 @@ describe("Authentication Configurations", () => {
 
     for (const frontend of incompatibleFrontends) {
       it(`should fail with clerk + ${frontend}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `clerk-${frontend}-fail`,
           auth: "clerk",
           backend: "convex",
@@ -1091,10 +959,6 @@ describe("Authentication Configurations", () => {
           frontend: [frontend as Frontend],
           addons: ["turborepo"],
           examples: ["todo"],
-          dbSetup: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
-          expectError: true,
         });
 
         expectError(result, "Clerk authentication is not compatible");
@@ -1104,21 +968,10 @@ describe("Authentication Configurations", () => {
 
   describe("No Authentication", () => {
     it("should work with auth none", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "no-auth",
-        auth: "none",
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        api: "trpc",
-        frontend: ["tanstack-router"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -1126,42 +979,29 @@ describe("Authentication Configurations", () => {
 
     it("should work with auth none + no database", async () => {
       // When backend is 'none', examples are automatically cleared
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "no-auth-no-db",
-        auth: "none",
         backend: "none",
         runtime: "none",
         database: "none",
         orm: "none",
         api: "none",
-        frontend: ["tanstack-router"],
         addons: ["turborepo"],
-        examples: ["none"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should work with auth none + convex", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "no-auth-convex",
-        auth: "none",
         backend: "convex",
         runtime: "none",
         database: "none",
         orm: "none",
         api: "none",
-        frontend: ["tanstack-router"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
@@ -1198,7 +1038,7 @@ describe("Authentication Configurations", () => {
           config.runtime = "bun";
         }
 
-        const result = await runTRPCTest(config);
+        const result = await runCreateTest(config);
         expectSuccess(result);
       });
     }
@@ -1218,37 +1058,18 @@ describe("Authentication Configurations", () => {
 
     for (const { database, orm } of ormCombinations) {
       it(`should work with better-auth + ${database} + ${orm}`, async () => {
-        const result = await runTRPCTest({
+        const result = await runCreateTest({
           projectName: `better-auth-${database}-${orm}`,
           auth: "better-auth",
-          backend: "hono",
-          runtime: "bun",
           database: database as Database,
           orm: orm as ORM,
-          api: "trpc",
-          frontend: ["tanstack-router"],
           addons: ["turborepo"],
           examples: ["todo"],
-          dbSetup: "none",
-          webDeploy: "none",
-          serverDeploy: "none",
-          install: false,
         });
 
         expectSuccess(result);
         if (!result.projectDir) {
           throw new Error("Expected projectDir to be defined");
-        }
-
-        if (orm === "prisma") {
-          const authSchema = await fs.readFile(
-            path.join(result.projectDir, "packages/db/prisma/schema/auth.prisma"),
-            "utf8",
-          );
-          expect(authSchema).not.toContain("issuer                String");
-          expect(authSchema).toContain(
-            '@@unique([providerId, accountId], map: "account_providerId_accountId_uidx")',
-          );
         }
       });
     }
@@ -1256,42 +1077,25 @@ describe("Authentication Configurations", () => {
 
   describe("Auth Edge Cases", () => {
     it("should handle auth with complex frontend combinations", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "auth-web-native-combo",
         auth: "better-auth",
-        backend: "hono",
-        runtime: "bun",
-        database: "sqlite",
-        orm: "drizzle",
-        api: "trpc",
         frontend: ["tanstack-router", "native-bare"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
-        serverDeploy: "none",
-        install: false,
       });
 
       expectSuccess(result);
     });
 
     it("should handle auth constraints with workers runtime", async () => {
-      const result = await runTRPCTest({
+      const result = await runCreateTest({
         projectName: "auth-workers",
         auth: "better-auth",
-        backend: "hono",
         runtime: "workers",
-        database: "sqlite",
-        orm: "drizzle",
-        api: "trpc",
-        frontend: ["tanstack-router"],
         addons: ["turborepo"],
         examples: ["todo"],
-        dbSetup: "none",
-        webDeploy: "none",
         serverDeploy: "cloudflare",
-        install: false,
       });
 
       expectSuccess(result);

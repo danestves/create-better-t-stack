@@ -40,14 +40,20 @@ export function generateTurboConfig(config: ProjectConfig): TurboConfig {
   const hasDatabase = dbSupport.hasDbScripts;
   const isDocker = dbSetup === "docker";
   const isSqliteLocal = database === "sqlite" && dbSetup !== "d1" && hasDatabase;
-  const hasAlchemy = isAlchemyDeployTarget(webDeploy) || isAlchemyDeployTarget(serverDeploy);
+  const hasAlchemy =
+    isAlchemyDeployTarget(webDeploy) ||
+    isAlchemyDeployTarget(serverDeploy) ||
+    config.addons.includes("axiom");
   const hasLocalD1 = getLocalD1Owner(config) === "wrangler";
 
   const tasks: TurboTasks = getBaseTasks(frontend, config.addons);
+  if (config.api === "orpc" && !["convex", "none"].includes(backend)) {
+    tasks["check-types"] = { ...tasks["check-types"], outputs: ["dist/**"] };
+  }
 
   if (config.addons.includes("electrobun")) Object.assign(tasks, getElectrobunTasks());
   if (isConvex) Object.assign(tasks, getConvexTasks());
-  if (!isConvex && hasDatabase) Object.assign(tasks, getDatabaseTasks(dbSupport));
+  if (!isConvex && hasDatabase) Object.assign(tasks, getDatabaseTasks(dbSupport, config.orm));
   if (isDocker) Object.assign(tasks, getDockerTasks());
   if (isSqliteLocal) Object.assign(tasks, getSqliteLocalTask());
   if (hasLocalD1) Object.assign(tasks, getLocalD1Task());
@@ -140,7 +146,7 @@ function getConvexTasks(): TurboTasks {
   };
 }
 
-function getDatabaseTasks(dbSupport: DbScriptSupport): TurboTasks {
+function getDatabaseTasks(dbSupport: DbScriptSupport, orm: ProjectConfig["orm"]): TurboTasks {
   const tasks: TurboTasks = {};
 
   if (dbSupport.hasDbPush) {
@@ -148,7 +154,8 @@ function getDatabaseTasks(dbSupport: DbScriptSupport): TurboTasks {
   }
 
   if (dbSupport.hasDbGenerate) {
-    tasks["db:generate"] = { cache: false, interactive: true };
+    // prisma generate never prompts, and Vercel builds run it without a terminal
+    tasks["db:generate"] = { cache: false, interactive: orm === "drizzle" };
   }
 
   if (dbSupport.hasDbMigrate) {

@@ -44,7 +44,28 @@ export type AlchemyDeploymentPlan = {
   hasPrismaDeploy: boolean;
   hasAlchemyManagedDatabase: boolean;
   hasD1Resource: boolean;
+  hasAxiom: boolean;
+  hasAxiomServerRuntime: boolean;
+  hasAxiomWebRuntime: boolean;
+  hasAxiomVercelRuntime: boolean;
+  needsStandaloneServerDev: boolean;
+  needsStandaloneWebDev: boolean;
 };
+
+const AXIOM_SERVER_BACKENDS: readonly ProjectConfig["backend"][] = [
+  "hono",
+  "express",
+  "fastify",
+  "elysia",
+];
+
+const AXIOM_WEB_FRONTENDS: readonly Frontend[] = [
+  "next",
+  "tanstack-start",
+  "nuxt",
+  "svelte",
+  "astro",
+];
 
 function isDeployedWebFramework(frontend: Frontend): frontend is DeployedWebFramework {
   return (webFrontends as readonly Frontend[]).includes(frontend);
@@ -93,6 +114,13 @@ export function createAlchemyDeploymentPlan(config: ProjectConfig): AlchemyDeplo
   const hasCloudflare = config.webDeploy === "cloudflare" || config.serverDeploy === "cloudflare";
   const hasPrismaDeploy = config.webDeploy === "prisma" || config.serverDeploy === "prisma";
   const hasAlchemyManagedDatabase = usesAlchemyManagedDatabase(config);
+  const hasAxiom = config.addons.includes("axiom");
+  const hasAxiomServerRuntime = hasAxiom && AXIOM_SERVER_BACKENDS.includes(config.backend);
+  const hasAxiomWebRuntime =
+    hasAxiom && config.frontend.some((frontend) => AXIOM_WEB_FRONTENDS.includes(frontend));
+  const hasAxiomVercelRuntime =
+    (hasAxiomWebRuntime && config.webDeploy === "vercel") ||
+    (hasAxiomServerRuntime && config.serverDeploy === "vercel");
 
   const web: AlchemyWebPlan = isAlchemyDeployTarget(config.webDeploy)
     ? {
@@ -118,9 +146,36 @@ export function createAlchemyDeploymentPlan(config: ProjectConfig): AlchemyDeplo
       config.dbSetup === "d1" &&
       (config.serverDeploy === "cloudflare" ||
         (config.backend === "self" && config.webDeploy === "cloudflare")),
+    hasAxiom,
+    hasAxiomServerRuntime,
+    hasAxiomWebRuntime,
+    hasAxiomVercelRuntime,
+    needsStandaloneServerDev: hasAxiomServerRuntime && server.target === "none",
+    needsStandaloneWebDev: hasAxiomWebRuntime && web.target === "none",
   };
 }
 
 export function assertNever(value: never): never {
   throw new Error(`Unhandled Alchemy plan variant: ${JSON.stringify(value)}`);
+}
+
+export function getPrismaWebsiteFramework(config: ProjectConfig): string | undefined {
+  if (config.webDeploy !== "prisma" || config.backend !== "none") return;
+  for (const frontend of config.frontend) {
+    switch (frontend) {
+      case "next":
+        return "Nextjs";
+      case "nuxt":
+        return "Nuxt";
+      case "astro":
+        return "Astro";
+      case "svelte":
+        // Alchemy's framework adapter requires Kit 3. Kit 2 uses its Node server artifact.
+        return;
+      case "tanstack-start":
+        return "TanStackStart";
+      case "tanstack-router":
+        return "Vite";
+    }
+  }
 }

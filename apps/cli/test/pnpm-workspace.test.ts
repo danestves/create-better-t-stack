@@ -1,17 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import yaml from "yaml";
 
-import { expectSuccess, runTRPCTest, type TestConfig } from "./test-utils";
+import { add } from "../src/index";
+import { expectSuccess, runCreateTest, type TestConfig } from "./test-utils";
 
 async function readPnpmWorkspace(config: TestConfig) {
-  const result = await runTRPCTest({
+  const result = await runCreateTest({
     ...config,
     packageManager: "pnpm",
-    install: false,
-    git: false,
   });
 
   expectSuccess(result);
@@ -26,40 +25,31 @@ async function readPnpmWorkspace(config: TestConfig) {
 }
 
 describe("pnpm workspace", () => {
-  it("allows the pinned Solid 2 prereleases through pnpm's release-age policy", async () => {
-    const workspace = await readPnpmWorkspace({
-      projectName: "pnpm-solid-v2",
-      frontend: ["solid"],
-      backend: "none",
-      runtime: "none",
-      api: "none",
-      database: "none",
-      orm: "none",
-      auth: "none",
-      payments: "none",
+  it("updates approvals when adding addons while preserving workspace customizations", async () => {
+    const result = await runCreateTest({
+      projectName: "pnpm-add-approvals",
+      packageManager: "pnpm",
       addons: ["none"],
-      examples: ["none"],
-      dbSetup: "none",
-      webDeploy: "none",
-      serverDeploy: "none",
     });
+    expectSuccess(result);
+    const workspacePath = path.join(result.projectDir!, "pnpm-workspace.yaml");
+    const workspace = yaml.parse(await readFile(workspacePath, "utf8"));
+    workspace.packages.push("tools/*");
+    workspace.allowBuilds = { ...workspace.allowBuilds, sharp: false };
+    workspace.overrides = { "custom-package": "1.0.0" };
+    await writeFile(workspacePath, yaml.stringify(workspace));
 
-    expect(workspace.overrides).toEqual({
-      "@solidjs/signals": "2.0.0-rc.7",
-      "@solidjs/compiler": "2.0.0-rc.7",
-      "@solidjs/babel-plugin": "2.0.0-rc.7",
+    const added = await add({
+      projectDir: result.projectDir!,
+      addons: ["turborepo"],
+      install: false,
     });
-    expect(workspace.minimumReleaseAgeExclude).toEqual([
-      "@solidjs/babel-plugin@2.0.0-rc.7",
-      "@solidjs/compiler@2.0.0-rc.7",
-      "@solidjs/meta@1.0.0-next.2",
-      "@solidjs/router@2.0.0-next.23",
-      "@solidjs/signals@2.0.0-rc.7",
-      "@solidjs/vite-plugin@3.0.0-next.39",
-      "@solidjs/web@2.0.0-rc.7",
-      "@tanstack/solid-query@6.0.0-rc.3",
-      "solid-js@2.0.0-rc.7",
-    ]);
+    expect(added.success).toBe(true);
+    const updated = yaml.parse(await readFile(workspacePath, "utf8"));
+    expect(updated.allowBuilds).toMatchObject({ esbuild: true, sharp: false });
+    expect(updated.packages).toEqual(workspace.packages);
+    expect(updated.overrides).toEqual(workspace.overrides);
+    expect(updated.catalog).toEqual(workspace.catalog);
   });
 
   it("adds build approvals for the Convex Better Auth Cloudflare stack", async () => {
@@ -136,6 +126,30 @@ describe("pnpm workspace", () => {
     });
   });
 
+  it("adds Alchemy build approvals for Axiom without compute deployment", async () => {
+    const workspace = await readPnpmWorkspace({
+      projectName: "pnpm-axiom",
+      frontend: ["tanstack-start"],
+      backend: "self",
+      runtime: "none",
+      api: "orpc",
+      database: "none",
+      orm: "none",
+      auth: "none",
+      payments: "none",
+      addons: ["axiom"],
+      examples: ["none"],
+      dbSetup: "none",
+      webDeploy: "none",
+      serverDeploy: "none",
+    });
+
+    expect(workspace.allowBuilds).toMatchObject({
+      "msgpackr-extract": true,
+      workerd: true,
+    });
+  });
+
   it("adds build approvals for node runtime and workspace addons", async () => {
     const workspace = await readPnpmWorkspace({
       projectName: "pnpm-node-addons",
@@ -159,6 +173,27 @@ describe("pnpm workspace", () => {
       lefthook: true,
       nx: true,
     });
+  });
+
+  it("adds esbuild approval for Drizzle stacks", async () => {
+    const workspace = await readPnpmWorkspace({
+      projectName: "pnpm-solid-hono-drizzle",
+      frontend: ["solid"],
+      backend: "hono",
+      runtime: "bun",
+      api: "orpc",
+      database: "sqlite",
+      orm: "drizzle",
+      auth: "better-auth",
+      payments: "none",
+      addons: ["none"],
+      examples: ["todo"],
+      dbSetup: "none",
+      webDeploy: "none",
+      serverDeploy: "none",
+    });
+
+    expect(workspace.allowBuilds).toMatchObject({ esbuild: true });
   });
 
   it("adds esbuild approval for Vite+ stacks", async () => {

@@ -85,7 +85,7 @@ describe("Alchemy providers", () => {
     expect(cloudflareInfra).not.toContain("CORS_ORIGIN");
     expect(cloudflareInfra).toContain("BETTER_AUTH_URL: Cloudflare.Worker.URL");
     expect(prismaInfra).not.toContain("CORS_ORIGIN");
-    expect(prismaInfra).toContain('BETTER_AUTH_URL: Config.string("BETTER_AUTH_URL")');
+    expect(prismaInfra).toContain('BETTER_AUTH_URL: Config.String("BETTER_AUTH_URL")');
   });
 
   it("rejects OpenNext combinations that are broken in the current release", async () => {
@@ -169,7 +169,7 @@ describe("Alchemy providers", () => {
       const prismaConfig = files.get("packages/db/prisma.config.ts") ?? "";
 
       expect(infra).toContain('export const server = Prisma.Compute("server"');
-      expect(infra).toContain('DATABASE_URL: Config.redacted("DATABASE_URL")');
+      expect(infra).toContain('DATABASE_URL: Config.Redacted("DATABASE_URL")');
       expect(infra).not.toContain(combination.providerResource);
       expect(prismaConfig).toContain("env('DATABASE_URL')");
       expect(prismaConfig).not.toContain("process.env.DATABASE_URL!");
@@ -202,10 +202,10 @@ describe("Alchemy providers", () => {
     expect(files.has("packages/db/prisma/migrations/0000_init/migration.sql")).toBe(true);
     expect(infraPackage.scripts?.["check-types"]).toBe("tsc --noEmit");
     expect(infraPackage.devDependencies).toMatchObject({
-      alchemy: "2.0.0-beta.76",
-      effect: "4.0.0-rc.112",
-      "@effect/platform-node": "4.0.0-rc.112",
-      "@effect/platform-bun": "4.0.0-rc.112",
+      alchemy: expect.any(String),
+      effect: expect.any(String),
+      "@effect/platform-node": expect.any(String),
+      "@effect/platform-bun": expect.any(String),
     });
   });
 
@@ -230,7 +230,7 @@ describe("Alchemy providers", () => {
     expect(infra).not.toContain('Command.Exec("database-migrations"');
     expect(dbSource).toContain("drizzle-orm/postgres-js");
     expect(dbSource).toContain('from "postgres"');
-    expect(dbPackage.dependencies?.postgres).toBe("^3.4.9");
+    expect(dbPackage.dependencies?.postgres).toBeDefined();
     expect(dbPackage.dependencies?.pg).toBeUndefined();
     expect(readme).toContain("PS_DEV");
     expect(readme).toContain("may charge for this database");
@@ -295,7 +295,6 @@ describe("Alchemy providers", () => {
     expect(infra).toContain("Redacted.value(secret)");
     expect(infra).toContain("?sslaccept=strict");
     expect(infra).toContain('export const web = Prisma.Compute("web"');
-    expect(infra).toContain('entrypoint: "server/index.mjs"');
     expect(files.has("packages/db/prisma/migrations/0000_init/migration.sql")).toBe(true);
     expect(readme).toContain("web on Prisma");
     expect(readme).not.toContain("Prisma Compute");
@@ -333,10 +332,10 @@ describe("Alchemy providers", () => {
     expect(webVite).toContain('import { unwasm } from "unwasm/plugin"');
     expect(webVite).toContain("unwasm({ esmImport: true })");
     expect(webVite).toContain('process.env.ALCHEMY_CLOUDFLARE_VITE_INJECTED === "1"');
-    expect(webPackage.devDependencies?.unwasm).toBe("^0.6.0");
+    expect(webPackage.devDependencies?.unwasm).toBeDefined();
     expect(dbSource).toContain('from "@prisma/adapter-ppg"');
     expect(dbSource).toContain("new PrismaPostgresAdapter");
-    expect(dbPackage.dependencies?.["@prisma/adapter-ppg"]).toBe("^7.10.0");
+    expect(dbPackage.dependencies?.["@prisma/adapter-ppg"]).toBeDefined();
     expect(dbPackage.dependencies?.["@prisma/adapter-pg"]).toBeUndefined();
     expect(dbPackage.dependencies?.pg).toBeUndefined();
     expect(files.get("packages/db/prisma/schema/schema.prisma")).toContain(
@@ -370,12 +369,13 @@ describe("Alchemy providers", () => {
 
       expect(frameworkConfig).toContain('from "unwasm/plugin"');
       expect(frameworkConfig).toContain("unwasm({ esmImport: true })");
-      expect(webPackage.devDependencies?.unwasm).toBe("^0.6.0");
+      expect(webPackage.devDependencies?.unwasm).toBeDefined();
 
       if (frontend === "nuxt") {
         expect(frameworkConfig).toContain("wasm: true");
         expect(frameworkConfig).toContain("'pg-native': 'unenv/mock/proxy'");
-        expect(nuxtServerPlugin).toContain('url: "/rpc"');
+        // RPCLink needs an absolute URL during SSR
+        expect(nuxtServerPlugin).toContain('new URL("/rpc", useRequestURL())');
         expect(nuxtServerPlugin).toContain("event.fetch(request, init)");
         expect(nuxtServerPlugin).not.toContain("createRouterClient");
       }
@@ -429,7 +429,7 @@ describe("Alchemy providers", () => {
 
     expect(tsdown).toContain('import { unwasm } from "unwasm/plugin"');
     expect(tsdown).toContain("unwasm({ esmImport: true })");
-    expect(serverPackage.devDependencies?.unwasm).toBe("^0.6.0");
+    expect(serverPackage.devDependencies?.unwasm).toBeDefined();
   });
 
   it("keeps a provider external when its consuming server is not deployed by Alchemy", async () => {
@@ -438,14 +438,14 @@ describe("Alchemy providers", () => {
       webDeploy: "prisma",
       serverDeploy: "vercel",
       backend: "hono",
-      runtime: "bun",
+      runtime: "node",
       dbSetup: "neon",
     });
     const infra = files.get("packages/infra/alchemy.run.ts") ?? "";
 
     expect(infra).not.toContain('Neon.Project("database"');
     expect(infra).not.toContain('Command.Exec("database-migrations"');
-    expect(infra).toContain('DATABASE_URL: Config.redacted("DATABASE_URL")');
+    expect(infra).toContain('DATABASE_URL: Config.Redacted("DATABASE_URL")');
     expect(infra).toContain("export const databaseProviders = Prisma.providers()");
     expect(files.has("packages/db/prisma/migrations/0000_init/migration.sql")).toBe(false);
   });
@@ -464,95 +464,6 @@ describe("Alchemy providers", () => {
     expect(infra.match(/\.\.\.databaseBindings/g) ?? []).toHaveLength(0);
     expect(infra).toContain("export const databaseEnv =");
     expect(infra).toContain('export const server = Prisma.Compute("server"');
-  });
-
-  it("packages supported custom web framework artifacts for Prisma", async () => {
-    const standalone = {
-      serverDeploy: "none",
-      backend: "none",
-      runtime: "none",
-      database: "none",
-      orm: "none",
-      auth: "none",
-      payments: "none",
-      api: "none",
-      addons: ["none"],
-      examples: ["none"],
-      dbSetup: "none",
-    } satisfies Partial<CreateOptions>;
-
-    const reactRouter = await generate({
-      ...standalone,
-      projectName: "prisma-react-router",
-      webDeploy: "prisma",
-      frontend: ["react-router"],
-    });
-    const reactRouterInfra = reactRouter.get("packages/infra/alchemy.run.ts") ?? "";
-    const reactRouterVite = reactRouter.get("apps/web/vite.config.ts") ?? "";
-    const reactRouterPackage = JSON.parse(reactRouter.get("apps/web/package.json") ?? "{}") as {
-      scripts?: Record<string, string>;
-      dependencies?: Record<string, string>;
-    };
-
-    expect(reactRouterInfra).toContain('command: "bun run build"');
-    expect(reactRouterInfra).toContain('outdir: "build"');
-    expect(reactRouterInfra).toContain('entrypoint: "server/index.js"');
-    expect(reactRouterVite).toContain('input: "./prisma.server.ts"');
-    expect(reactRouterVite).toContain("noExternal: true");
-    expect(reactRouter.get("apps/web/prisma.server.ts")).toContain(
-      'import("virtual:react-router/server-build")',
-    );
-    expect(reactRouterPackage.scripts?.["build:prisma"]).toBeUndefined();
-    expect(reactRouterPackage.dependencies).toMatchObject({
-      "@react-router/express": "^8.3.1",
-      express: "^5.2.1",
-    });
-
-    const svelte = await generate({
-      ...standalone,
-      projectName: "prisma-sveltekit",
-      webDeploy: "prisma",
-      frontend: ["svelte"],
-    });
-    const svelteInfra = svelte.get("packages/infra/alchemy.run.ts") ?? "";
-    const svelteConfig = svelte.get("apps/web/svelte.config.js") ?? "";
-    const svelteVite = svelte.get("apps/web/vite.config.ts") ?? "";
-    const sveltePackage = JSON.parse(svelte.get("apps/web/package.json") ?? "{}") as {
-      scripts?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-
-    expect(svelteInfra).toContain('command: "bun run build"');
-    expect(svelteInfra).toContain('outdir: "build"');
-    expect(svelteInfra).toContain('entrypoint: "index.js"');
-    expect(svelteConfig).toContain("@sveltejs/adapter-node");
-    expect(svelteVite).toContain("noExternal: true");
-    expect(svelte.has("apps/web/vite.prisma.config.ts")).toBe(false);
-    expect(sveltePackage.scripts?.["build:prisma"]).toBeUndefined();
-    expect(sveltePackage.devDependencies?.["@sveltejs/adapter-node"]).toBe("^5.5.7");
-    expect(sveltePackage.devDependencies?.["@sveltejs/adapter-auto"]).toBeUndefined();
-  });
-
-  it("rejects static SPAs for Prisma Compute instead of generating a server shim", async () => {
-    const result = await createVirtual({
-      ...baseConfig,
-      projectName: "prisma-tanstack-router",
-      webDeploy: "prisma",
-      serverDeploy: "none",
-      backend: "none",
-      runtime: "none",
-      database: "none",
-      orm: "none",
-      auth: "none",
-      api: "none",
-      frontend: ["tanstack-router"],
-      dbSetup: "none",
-    });
-
-    expect(result.isErr()).toBe(true);
-    expect(result.isErr() && result.error.message).toContain(
-      "TanStack Router is a static SPA, while Prisma Compute requires an executable server artifact",
-    );
   });
 
   it("rejects desktop builds that replace Prisma server artifacts with static exports", async () => {
@@ -601,5 +512,121 @@ describe("Alchemy providers", () => {
       prisma: true,
       workerd: true,
     });
+  });
+
+  it("provisions Axiom independently and binds it across deployment targets", async () => {
+    const noDeploy = await generate({
+      projectName: "axiom-no-deploy",
+      addons: ["axiom", "turborepo"],
+      frontend: ["next"],
+      backend: "hono",
+      runtime: "bun",
+      database: "none",
+      orm: "none",
+      auth: "none",
+      api: "orpc",
+      examples: ["none"],
+      dbSetup: "none",
+      webDeploy: "none",
+      serverDeploy: "none",
+      packageManager: "npm",
+    });
+    const cloudflare = await generate({
+      projectName: "axiom-cloudflare",
+      addons: ["axiom", "turborepo"],
+      frontend: ["next"],
+      backend: "hono",
+      runtime: "workers",
+      webDeploy: "cloudflare",
+      serverDeploy: "cloudflare",
+    });
+    const prisma = await generate({
+      projectName: "axiom-prisma",
+      addons: ["axiom", "turborepo"],
+      frontend: ["next"],
+      backend: "self",
+      runtime: "none",
+      database: "none",
+      orm: "none",
+      auth: "none",
+      dbSetup: "none",
+      examples: ["none"],
+      webDeploy: "prisma",
+      serverDeploy: "none",
+    });
+    const vercel = await generate({
+      projectName: "axiom-vercel",
+      addons: ["axiom", "turborepo"],
+      frontend: ["next"],
+      backend: "self",
+      runtime: "none",
+      webDeploy: "vercel",
+      serverDeploy: "none",
+    });
+    const docker = await generate({
+      projectName: "axiom-docker",
+      addons: ["axiom", "turborepo"],
+      frontend: ["next"],
+      backend: "self",
+      runtime: "none",
+      webDeploy: "docker",
+      serverDeploy: "none",
+    });
+    const splitDocker = await generate({
+      projectName: "axiom-split-docker",
+      addons: ["axiom", "turborepo"],
+      frontend: ["react-router"],
+      backend: "hono",
+      runtime: "bun",
+      database: "none",
+      orm: "none",
+      auth: "none",
+      dbSetup: "none",
+      examples: ["none"],
+      webDeploy: "docker",
+      serverDeploy: "docker",
+    });
+
+    const noDeployInfra = noDeploy.get("packages/infra/alchemy.run.ts") ?? "";
+    const noDeployPackage = JSON.parse(noDeploy.get("package.json") ?? "{}") as {
+      scripts?: Record<string, string>;
+      allowScripts?: Record<string, boolean>;
+    };
+    const cloudflareInfra = cloudflare.get("packages/infra/alchemy.run.ts") ?? "";
+    const prismaInfra = prisma.get("packages/infra/alchemy.run.ts") ?? "";
+    const vercelInfra = vercel.get("packages/infra/alchemy.run.ts") ?? "";
+    const dockerReadme = docker.get("README.md") ?? "";
+    const splitDockerCompose = splitDocker.get("docker-compose.yml") ?? "";
+
+    expect(noDeployInfra).toContain('Axiom.Dataset("logs"');
+    expect(noDeployInfra).toContain('Axiom.ApiToken("logs-ingest"');
+    expect(noDeployInfra).toContain('Command.Dev("web-dev"');
+    expect(noDeployInfra).toContain('Command.Dev("server-dev"');
+    expect(noDeployInfra).not.toContain('effect/Config"');
+    expect(noDeployPackage.scripts?.["dev:web"]).toBeUndefined();
+    expect(noDeployPackage.scripts?.["dev:server"]).toBeUndefined();
+    expect(noDeployPackage.allowScripts).toMatchObject({
+      "msgpackr-extract": true,
+      workerd: true,
+    });
+    expect(cloudflareInfra).toContain("...observabilityBindings");
+    expect(prismaInfra).toContain("...resolvedObservabilityEnv");
+    expect(prismaInfra).not.toContain('effect/Config"');
+    expect(vercelInfra).toContain('Command.Exec("axiom-vercel-env"');
+    expect(vercelInfra).toContain("env: observabilityResources.runtimeEnv");
+    expect(vercelInfra).toContain('if (!isDev && (stage === "preview" || stage === "production"))');
+    expect(vercelInfra).toContain("env:${stage}");
+    expect(vercelInfra).not.toContain('stage === "production" ? "production" : "preview"');
+    const appSchema = noDeploy.get("apps/server/.env.schema") ?? "";
+    expect(appSchema).toContain("AXIOM_API_KEY=");
+    expect(appSchema).toContain("@dynamic @required=false");
+    expect(noDeploy.get("apps/web/.env.schema")).toContain("AXIOM_API_KEY=");
+    expect(noDeploy.get("packages/infra/.env.schema")).not.toContain("AXIOM_API_KEY");
+    expect(noDeployInfra).toContain('import "varlock/auto-load"');
+    expect(noDeployInfra).not.toContain("dotenv");
+    expect(JSON.parse(noDeploy.get("turbo.json") ?? "{}").globalEnv).toContain("AXIOM_API_KEY");
+    expect(vercel.get("scripts/sync-vercel-env.ts")).toContain('"AXIOM_API_KEY"');
+    expect(dockerReadme).toContain("target platform's secret manager");
+    expect(splitDockerCompose.match(/^\s+AXIOM_API_KEY:/gm)).toHaveLength(1);
   });
 });

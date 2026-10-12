@@ -1,8 +1,10 @@
 {
   "extends": "@{{projectName}}/config/tsconfig.base.json",
+  {{#if (eq api "orpc")}}
+  "references": [{ "path": "../../packages/api" }],
+  {{/if}}
   "compilerOptions": {
-    "composite": true,
-		"outDir": "dist",
+    "noEmit": true,
 		"paths": {
       "@/*": ["./src/*"]
     },

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+{{#if (eq payments "polar")}}
+import type { CustomerState } from "@polar-sh/sdk/models/components/customerstate";
+{{/if}}
+
 {{#if (eq api "orpc")}}
 import { useQuery } from '@tanstack/vue-query'
 {{/if}}
@@ -9,24 +13,28 @@ definePageMeta({
   middleware: ['auth']
 })
 
-const session = $authClient.useSession()
+const { data: session } = await useAuthSession()
 
 {{#if (eq payments "polar")}}
-const customerState = ref<any>(null)
+const customerState = ref<CustomerState | null>(null)
 {{/if}}
 
 {{#if (eq api "orpc")}}
 const privateData = useQuery({
   ...$orpc.privateData.queryOptions(),
-  enabled: computed(() => !!session.value?.data?.user)
+  enabled: computed(() => !!session.value?.user)
+})
+
+onServerPrefetch(async () => {
+  if (session.value?.user) await privateData.suspense()
 })
 {{/if}}
 
 {{#if (eq payments "polar")}}
 onMounted(async () => {
-  if (session.value?.data) {
+  if (session.value) {
     const { data } = await $authClient.customer.state()
-    customerState.value = data
+    customerState.value = data ?? null
   }
 })
 
@@ -40,7 +48,7 @@ const hasProSubscription = computed(() =>
   <UContainer class="py-8">
     <UPageHeader
       title="Dashboard"
-      :description="session?.data?.user ? `Welcome back, ${session.data.user.name}!` : 'Loading...'"
+      :description="session?.user ? `Welcome back, ${session.user.name}!` : 'Loading...'"
     />
 
     <div class="mt-6 space-y-4">

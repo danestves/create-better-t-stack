@@ -6,18 +6,14 @@ import {
   WEB_DEPLOY_VALUES,
 } from "../../../packages/types/src/schemas";
 import {
-  applyStackUpdate,
   getSelectedTechRemovalUpdate,
   getTechSelectionUpdate,
-  resolveStackCompatibility,
 } from "../src/app/(home)/new/_components/stack-builder/use-stack-builder";
-import {
-  analyzeStackCompatibility,
-  getDisabledReason,
-} from "../src/app/(home)/new/_components/utils";
 import { DEFAULT_STACK, type StackState, TECH_OPTIONS } from "../src/lib/constant";
 import { sanitizeAddons } from "../src/lib/sanitize-stack-addons";
+import { applyStackUpdate, resolveStackCompatibility } from "../src/lib/stack-compatibility";
 import { formatStackCommandForDisplay, generateStackCommand } from "../src/lib/stack-utils";
+import { analyzeStackCompatibility, getDisabledReason } from "../src/lib/stack-validation";
 
 function createStack(overrides: Partial<StackState> = {}): StackState {
   return {
@@ -44,9 +40,7 @@ describe("stack builder D1 compatibility", () => {
     expect(getDisabledReason(stack, "api", "trpc")).toBe(
       "tRPC is not compatible with Solid (use oRPC)",
     );
-    expect(getDisabledReason(stack, "addons", "evlog")).toBe(
-      "evlog requires Hono, Express, Fastify, Elysia, or a fullstack backend",
-    );
+    expect(getDisabledReason(stack, "addons", "evlog")).toContain("observability");
     expect(analyzeStackCompatibility(stack).adjustedStack).toBeNull();
 
     const command = generateStackCommand(stack);
@@ -142,6 +136,11 @@ describe("stack builder D1 compatibility", () => {
     expect(getDisabledReason(createStack({ addons: ["vite-plus"] }), "addons", "nx")).toBeNull();
   });
 
+  test("keeps only the latest selected observability addon", () => {
+    expect(sanitizeAddons(["evlog", "axiom"])).toEqual(["axiom"]);
+    expect(sanitizeAddons(["axiom", "evlog"])).toEqual(["evlog"]);
+  });
+
   test("renders long CLI commands with visible flag separators", () => {
     const command = generateStackCommand(
       createStack({ addons: ["vite-plus"], examples: ["none"] }),
@@ -190,6 +189,30 @@ describe("stack builder D1 compatibility", () => {
       webDeploy: "cloudflare",
     });
   });
+
+  test.each(["native-bare", "native-uniwind", "native-unistyles"] as const)(
+    "keeps RevenueCat for %s and clears it when the native frontend is removed",
+    (frontend) => {
+      const stack = createStack({
+        webFrontend: ["none"],
+        nativeFrontend: [frontend],
+        auth: "none",
+        payments: "revenuecat",
+      });
+      expect(getDisabledReason(stack, "payments", "revenuecat")).toBeNull();
+      expect(resolveStackCompatibility(stack).stack.payments).toBe("revenuecat");
+      expect(generateStackCommand(stack)).toContain("--payments revenuecat");
+
+      const withoutNative = applyStackUpdate(stack, {
+        nativeFrontend: ["none"],
+        webFrontend: ["tanstack-router"],
+      }).stack;
+      expect(withoutNative.payments).toBe("none");
+      expect(getDisabledReason(withoutNative, "payments", "revenuecat")).toContain(
+        "native frontend",
+      );
+    },
+  );
 
   test("allows Polar when there is no frontend at all", () => {
     const stack = createStack({
@@ -332,9 +355,7 @@ describe("stack builder D1 compatibility", () => {
       addons: ["turborepo"],
     });
 
-    expect(getDisabledReason(stack, "addons", "evlog")).toBe(
-      "evlog requires Hono, Express, Fastify, Elysia, or a fullstack backend",
-    );
+    expect(getDisabledReason(stack, "addons", "evlog")).toContain("observability");
   });
 
   test("removes Evlog when a selected stack switches to Convex", () => {
@@ -349,10 +370,12 @@ describe("stack builder D1 compatibility", () => {
     const result = analyzeStackCompatibility(stack);
 
     expect(result.adjustedStack?.addons).toEqual(["turborepo"]);
-    expect(result.changes).toContainEqual({
-      category: "addons",
-      message: "evlog removed (requires a server or fullstack backend)",
-    });
+    expect(result.changes).toContainEqual(
+      expect.objectContaining({
+        category: "addons",
+        message: expect.stringContaining("evlog removed"),
+      }),
+    );
   });
 
   test("allows Evlog for server and fullstack stacks", () => {
@@ -524,7 +547,11 @@ describe("stack builder Vercel deployment compatibility", () => {
     expect(command).toContain("--web-deploy vercel");
   });
 
-  test("allows Vercel server deploy on bun/node runtimes only", () => {
+  test("allows Vercel server deploy on the node runtime only", () => {
+    const nodeStack = createStack({
+      backend: "hono",
+      runtime: "node",
+    });
     const bunStack = createStack({
       backend: "hono",
       runtime: "bun",
@@ -538,9 +565,13 @@ describe("stack builder Vercel deployment compatibility", () => {
       dbSetup: "d1",
     });
 
-    expect(getDisabledReason(bunStack, "serverDeploy", "vercel")).toBeNull();
+    expect(getDisabledReason(nodeStack, "serverDeploy", "vercel")).toBeNull();
+    // varlock/auto-load launches the Node-based Varlock CLI; Vercel's Bun runtime has no Node
+    expect(getDisabledReason(bunStack, "serverDeploy", "vercel")).toBe(
+      "Vercel server deployment requires the Node runtime",
+    );
     expect(getDisabledReason(workersStack, "serverDeploy", "vercel")).toBe(
-      "Vercel server deployment requires the Bun or Node runtime",
+      "Vercel server deployment requires the Node runtime",
     );
   });
 
@@ -604,8 +635,9 @@ describe("stack builder option parity", () => {
 });
 
 describe("stack builder Prisma deployment compatibility", () => {
-  test("allows Prisma web deployment only for supported SSR frontends", () => {
+  test("allows Prisma web deployment for supported server and SPA frontends", () => {
     for (const frontend of [
+      "tanstack-router",
       "next",
       "nuxt",
       "astro",
@@ -613,18 +645,10 @@ describe("stack builder Prisma deployment compatibility", () => {
       "tanstack-start",
       "svelte",
       "solid",
-    ]) {
+    ] as const) {
       expect(
         getDisabledReason(createStack({ webFrontend: [frontend] }), "webDeploy", "prisma"),
       ).toBeNull();
-    }
-
-    for (const frontend of ["tanstack-router"]) {
-      expect(
-        getDisabledReason(createStack({ webFrontend: [frontend] }), "webDeploy", "prisma"),
-      ).toBe(
-        "Prisma requires Next.js, Nuxt, Astro, React Router, TanStack Start, SvelteKit, or Solid",
-      );
     }
   });
 
@@ -671,12 +695,12 @@ describe("stack builder Prisma deployment compatibility", () => {
     ).toBe("Prisma server deployment requires the Bun or Node runtime");
   });
 
-  test("repairs invalid Prisma deployment state", () => {
+  test("preserves Prisma SPA deployment and repairs incompatible server runtimes", () => {
     expect(
       resolveStackCompatibility(
         createStack({ webFrontend: ["tanstack-router"], webDeploy: "prisma" }),
       ).stack.webDeploy,
-    ).toBe("none");
+    ).toBe("prisma");
     expect(
       resolveStackCompatibility(
         createStack({
@@ -705,4 +729,25 @@ describe("stack builder Prisma deployment compatibility", () => {
       "This Prisma PostgreSQL setup with Next.js is temporarily unavailable on Cloudflare",
     );
   });
+});
+
+test("changing one builder field preserves unrelated settings", () => {
+  const stack = createStack({
+    projectName: "keep-me",
+    database: "postgres",
+    orm: "prisma",
+    runtime: "node",
+  });
+  const update = getTechSelectionUpdate(stack, "git", "false");
+  expect(update).toEqual({ git: "false" });
+  const next = applyStackUpdate(stack, update).stack;
+  expect(next.projectName).toBe("keep-me");
+  expect(next.database).toBe("postgres");
+  expect(next.orm).toBe("prisma");
+  expect(next.runtime).toBe("node");
+});
+
+test("ignores option IDs belonging to a different builder category", () => {
+  expect(getTechSelectionUpdate(DEFAULT_STACK, "runtime", "next")).toEqual({});
+  expect(getTechSelectionUpdate(DEFAULT_STACK, "addons", "postgres")).toEqual({});
 });

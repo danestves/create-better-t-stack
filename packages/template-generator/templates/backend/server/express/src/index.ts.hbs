@@ -1,4 +1,4 @@
-{{#if (and (ne backend "self") (or (includes addons "electrobun") (includes addons "tauri")))}}import { desktopOrigins, env } from "@{{projectName}}/env/server";{{else}}import { env } from "@{{projectName}}/env/server";{{/if}}
+{{#if (and (ne backend "self") (or (includes addons "electrobun") (includes addons "tauri")))}}import { desktopOrigins, ENV } from "./env.server";{{else}}import { ENV } from "./env.server";{{/if}}
 {{#if (eq api "trpc")}}
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { createContext } from "@{{projectName}}/api/context";
@@ -32,7 +32,7 @@ const app = express();
 
 app.use(
 	cors({
-		origin: {{#if (and (ne backend "self") (or (includes addons "electrobun") (includes addons "tauri")))}}[env.CORS_ORIGIN, ...desktopOrigins]{{else}}env.CORS_ORIGIN{{/if}},
+		origin: {{#if (and (ne backend "self") (or (includes addons "electrobun") (includes addons "tauri")))}}[ENV.CORS_ORIGIN, ...desktopOrigins]{{else}}ENV.CORS_ORIGIN{{/if}},
 		methods: ["GET", "POST", "OPTIONS"],
 {{#if (or (eq auth "better-auth") (eq auth "clerk"))}}
 		allowedHeaders: ["Content-Type", "Authorization"],
@@ -55,8 +55,8 @@ app.all("/api/auth{/*path}", toNodeHandler(auth));
 const nativeAppUrl = "{{projectName}}://";
 const allowedNativeProtocols = new Set(["exp:", new URL(nativeAppUrl).protocol]);
 
-app.get("/polar/success", (req, res) => {
-	const requestUrl = new URL(req.url, env.BETTER_AUTH_URL);
+app.get("{{apiPrefix webDeploy serverDeploy}}/polar/success", (req, res) => {
+	const requestUrl = new URL(req.url, ENV.BETTER_AUTH_URL);
 	const returnUrl = requestUrl.searchParams.get("returnUrl") || nativeAppUrl;
 
 	let redirectUrl: URL;
@@ -78,7 +78,7 @@ app.get("/polar/success", (req, res) => {
 {{/if}}
 {{#if (eq api "trpc")}}
 app.use(
-	"/trpc",
+	"{{apiPrefix webDeploy serverDeploy}}/trpc",
 	createExpressMiddleware({
 		router: appRouter,
 		createContext,
@@ -109,13 +109,13 @@ const apiHandler = new OpenAPIHandler(appRouter, {
 
 app.use(async (req, res, next) => {
 	const rpcResult = await rpcHandler.handle(req, res, {
-		prefix: "/rpc",
+		prefix: "{{apiPrefix webDeploy serverDeploy}}/rpc",
 		context: await createContext({ req }),
 	});
 	if (rpcResult.matched) return;
 
 	const apiResult = await apiHandler.handle(req, res, {
-		prefix: "/api-reference",
+		prefix: "{{apiPrefix webDeploy serverDeploy}}/api-reference",
 		context: await createContext({ req }),
 	});
 	if (apiResult.matched) return;
@@ -127,7 +127,7 @@ app.use(async (req, res, next) => {
 app.use(express.json());
 
 {{#if (includes examples "ai")}}
-app.post("/ai", async (req, res) => {
+app.post("{{apiPrefix webDeploy serverDeploy}}/ai", async (req, res) => {
 	const { messages = [] } = (req.body || {}) as { messages: UIMessage[] };
 	const model = wrapLanguageModel({
 		model: google("gemini-2.5-flash"),

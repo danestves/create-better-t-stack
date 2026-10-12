@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -65,6 +65,204 @@ const baseConfig = {
 } satisfies Partial<CreateInput>;
 
 const buildSamples: BuildSample[] = [
+  ...(["native-bare", "native-uniwind", "native-unistyles"] as const).map(
+    (frontend) =>
+      ({
+        name: `${frontend}-revenuecat`,
+        config: {
+          ...baseConfig,
+          frontend: [frontend],
+          backend: "hono",
+          runtime: "bun",
+          database: "none",
+          orm: "none",
+          api: "orpc",
+          auth: "none",
+          payments: "revenuecat",
+          addons: [],
+          examples: [],
+        },
+      }) satisfies BuildSample,
+  ),
+  ...(["none", "better-auth"] as const).map(
+    (auth) =>
+      ({
+        name: `expo-convex-${auth}-revenuecat`,
+        config: {
+          ...baseConfig,
+          frontend: ["native-bare"],
+          backend: "convex",
+          runtime: "none",
+          database: "none",
+          orm: "none",
+          api: "none",
+          auth,
+          payments: "revenuecat",
+          addons: ["turborepo"],
+          examples: [],
+        },
+      }) satisfies BuildSample,
+  ),
+  {
+    name: "react-router-server-auth-polar-types",
+    packageManagers: ["bun"],
+    config: {
+      ...baseConfig,
+      frontend: ["react-router"],
+      backend: "hono",
+      runtime: "node",
+      database: "sqlite",
+      orm: "drizzle",
+      api: "orpc",
+      auth: "better-auth",
+      payments: "polar",
+      addons: [],
+      examples: [],
+      webDeploy: "docker",
+      serverDeploy: "docker",
+    },
+  },
+  {
+    name: "svelte-server-auth-polar-types",
+    packageManagers: ["bun"],
+    config: {
+      ...baseConfig,
+      frontend: ["svelte"],
+      backend: "self",
+      runtime: "none",
+      database: "sqlite",
+      orm: "drizzle",
+      api: "orpc",
+      auth: "better-auth",
+      payments: "polar",
+      addons: [],
+      examples: [],
+    },
+  },
+  ...(["native-bare", "native-uniwind", "native-unistyles"] as const).map(
+    (frontend) =>
+      ({
+        name: `${frontend}-polar-types`,
+        config: {
+          ...baseConfig,
+          frontend: [frontend],
+          backend: "hono",
+          runtime: "node",
+          database: "sqlite",
+          orm: "drizzle",
+          api: "orpc",
+          auth: "better-auth",
+          payments: "polar",
+          addons: [],
+          examples: ["todo"],
+        },
+      }) satisfies BuildSample,
+  ),
+  ...(["react-router", "nuxt", "svelte"] as const).map(
+    (frontend) =>
+      ({
+        name: `${frontend}-polar-types`,
+        config: {
+          ...baseConfig,
+          frontend: [frontend],
+          backend: "hono",
+          runtime: "node",
+          database: "sqlite",
+          orm: "drizzle",
+          api: "orpc",
+          auth: "better-auth",
+          payments: "polar",
+          addons: [],
+          examples: ["todo"],
+        },
+      }) satisfies BuildSample,
+  ),
+  {
+    name: "next-self-orpc-prisma-polar",
+    config: {
+      ...baseConfig,
+      frontend: ["next"],
+      backend: "self",
+      runtime: "none",
+      database: "sqlite",
+      orm: "prisma",
+      api: "orpc",
+      auth: "better-auth",
+      payments: "polar",
+      addons: ["none"],
+      examples: ["todo"],
+    },
+  },
+  {
+    name: "expo-orpc-auth-todo",
+    config: {
+      ...baseConfig,
+      frontend: ["native-bare"],
+      backend: "hono",
+      runtime: "bun",
+      database: "sqlite",
+      orm: "drizzle",
+      api: "orpc",
+      auth: "better-auth",
+      payments: "none",
+      addons: ["none"],
+      examples: ["todo"],
+    },
+  },
+  {
+    name: "tanstack-start-self-auth-todo",
+    config: {
+      ...baseConfig,
+      frontend: ["tanstack-start"],
+      backend: "self",
+      runtime: "none",
+      database: "sqlite",
+      orm: "drizzle",
+      api: "orpc",
+      auth: "better-auth",
+      payments: "none",
+      addons: ["none"],
+      examples: ["todo"],
+    },
+  },
+  {
+    name: "tanstack-start-axiom-pnpm",
+    packageManagers: ["pnpm"],
+    config: {
+      ...baseConfig,
+      frontend: ["tanstack-start"],
+      backend: "self",
+      runtime: "none",
+      database: "none",
+      orm: "none",
+      api: "none",
+      auth: "none",
+      payments: "none",
+      addons: ["axiom"],
+      examples: [],
+    },
+  },
+  ...(["nuxt", "tanstack-start"] as const).map(
+    (frontend) =>
+      ({
+        name: `${frontend}-axiom`,
+        packageManagers: ["bun"] as const,
+        config: {
+          ...baseConfig,
+          frontend: [frontend],
+          backend: "self",
+          runtime: "none",
+          database: "none",
+          orm: "none",
+          api: "none",
+          auth: "none",
+          payments: "none",
+          addons: ["axiom", "vite-plus"],
+          examples: [],
+          webDeploy: "docker",
+        },
+      }) satisfies BuildSample,
+  ),
   ...(["tanstack-router", "react-router", "next"] as const).map(
     (frontend) =>
       ({
@@ -172,6 +370,27 @@ const buildSamples: BuildSample[] = [
       examples: [],
     },
   },
+  ...(["trpc", "orpc"] as const).map(
+    (api) =>
+      ({
+        name: `next-hono-${api}-auth`,
+        config: {
+          ...baseConfig,
+          frontend: ["next"],
+          backend: "hono",
+          runtime: "bun",
+          database: "sqlite",
+          orm: "drizzle",
+          api,
+          auth: "better-auth",
+          payments: "none",
+          addons: [],
+          examples: ["todo"],
+          webDeploy: api === "trpc" ? "docker" : "none",
+          serverDeploy: api === "trpc" ? "docker" : "none",
+        },
+      }) satisfies BuildSample,
+  ),
   {
     name: "nuxt-orpc",
     config: {
@@ -410,11 +629,11 @@ const buildSamples: BuildSample[] = [
     config: {
       ...baseConfig,
       frontend: ["solid"],
-      backend: "none",
-      runtime: "none",
+      backend: "hono",
+      runtime: "bun",
       database: "none",
       orm: "none",
-      api: "none",
+      api: "orpc",
       auth: "none",
       payments: "none",
       addons: ["vite-plus"],
@@ -439,7 +658,7 @@ const buildSamples: BuildSample[] = [
   },
   {
     name: "prisma-react-router-web",
-    packageManagers: ["bun"],
+    packageManagers: ["bun", "npm"],
     config: {
       ...baseConfig,
       frontend: ["react-router"],
@@ -668,7 +887,9 @@ async function runCommand(sampleName: string, projectDir: string, command: strin
         BTS_TELEMETRY: "0",
         NEXT_TELEMETRY_DISABLED: "1",
         HUSKY: "0",
-        NODE_ENV: args.includes("build") ? "production" : process.env.NODE_ENV,
+        NODE_ENV: args.some((arg) => arg === "build" || arg.startsWith("build:"))
+          ? "production"
+          : process.env.NODE_ENV,
       },
     });
 
@@ -722,132 +943,22 @@ async function runWorkspaceTypeChecks(
       if (!(await fs.pathExists(packageJsonPath))) continue;
 
       const packageJson = packageScriptsSchema.parse(await fs.readJson(packageJsonPath));
-      const typecheckScript = packageJson.scripts?.["check-types"]
-        ? "check-types"
-        : packageJson.scripts?.typecheck
-          ? "typecheck"
-          : undefined;
+      const typecheckScript = packageJson.scripts?.["check-types"];
+      if (await fs.pathExists(path.join(workspaceDir, "tsconfig.json"))) {
+        expect(
+          typecheckScript,
+          `${sampleName}: ${workspaceRoot}/${entry.name} needs a check-types script`,
+        ).toBeDefined();
+      }
       if (!typecheckScript) continue;
 
       await runCommand(
         `${sampleName}:${workspaceRoot}/${entry.name}`,
         workspaceDir,
         packageManager,
-        ["run", typecheckScript],
+        ["run", "check-types"],
       );
     }
-  }
-}
-
-async function validateSolidScaffold(sample: SelectedBuildSample, projectDir: string) {
-  if (!sample.config.frontend?.includes("solid")) return;
-
-  const webDir = path.join(projectDir, "apps/web");
-  const requiredFiles = [
-    "package.json",
-    "tsconfig.json",
-    "vite.config.ts",
-    "src/App.tsx",
-    "src/Document.tsx",
-    "src/middleware.ts",
-    "src/router.ts",
-    "src/routes/index.tsx",
-    "src/routes/[...404].tsx",
-  ];
-  for (const file of requiredFiles) {
-    expect(await fs.pathExists(path.join(webDir, file))).toBe(true);
-  }
-
-  const legacyFiles = [
-    "index.html",
-    "src/main.tsx",
-    "src/entry-client.tsx",
-    "src/entry-server.tsx",
-    "src/routeTree.gen.ts",
-    "src/routes/__root.tsx",
-  ];
-  for (const file of legacyFiles) {
-    expect(await fs.pathExists(path.join(webDir, file))).toBe(false);
-  }
-
-  const webPackageJson = await fs.readJson(path.join(webDir, "package.json"));
-  expect(webPackageJson.dependencies?.["@solidjs/start"]).toBeUndefined();
-  expect(webPackageJson.devDependencies?.["@tanstack/solid-query-devtools"]).toBeUndefined();
-  expect(webPackageJson.dependencies?.["solid-js"]).toBe("2.0.0-rc.7");
-  expect(webPackageJson.dependencies?.["@solidjs/web"]).toBe("2.0.0-rc.7");
-  expect(webPackageJson.dependencies?.["@solidjs/router"]).toBeDefined();
-  expect(webPackageJson.devDependencies?.["@solidjs/vite-plugin"]).toBeDefined();
-  expect(webPackageJson.devDependencies?.["filesystem-routing"]).toBeDefined();
-  expect(webPackageJson.dependencies?.["@tanstack/solid-router"]).toBeUndefined();
-  expect(webPackageJson.scripts?.["check-types"]).toBe("tsc --noEmit");
-
-  if (sample.config.api === "orpc") {
-    expect(webPackageJson.dependencies?.["@tanstack/query-core"]).toBe("5.101.4");
-  }
-
-  const viteConfig = await fs.readFile(path.join(webDir, "vite.config.ts"), "utf8");
-  expect(viteConfig).toContain("solid({");
-  expect(viteConfig).toContain("fileRoutes({ httpMethods: true })");
-  expect(viteConfig).toContain("tsconfigPaths: true");
-
-  if (sample.config.backend === "self" && sample.config.api === "orpc") {
-    for (const file of [
-      "src/routes/rpc/[...rest].ts",
-      "src/routes/rpc/index.ts",
-      "src/utils/orpc.ts",
-      "src/utils/orpc.server.ts",
-    ]) {
-      expect(await fs.pathExists(path.join(webDir, file))).toBe(true);
-    }
-
-    const orpcClient = await fs.readFile(path.join(webDir, "src/utils/orpc.ts"), "utf8");
-    expect(orpcClient).toContain("globalThis.$client");
-  }
-
-  if (sample.config.backend === "self" && sample.config.auth === "better-auth") {
-    const authRoute = path.join(webDir, "src/routes/api/auth/[...auth].ts");
-    expect(await fs.pathExists(authRoute)).toBe(true);
-    expect(await fs.readFile(authRoute, "utf8")).toContain(".handler(request)");
-  }
-
-  if (sample.config.auth === "better-auth") {
-    const authClient = path.join(projectDir, "packages/auth/src/client.ts");
-    const webAuthClient = path.join(webDir, "src/lib/auth-client.ts");
-    const authPackageJson = await fs.readJson(path.join(projectDir, "packages/auth/package.json"));
-
-    expect(await fs.pathExists(authClient)).toBe(true);
-    expect(await fs.readFile(authClient, "utf8")).toContain('from "better-auth/client"');
-    expect(await fs.readFile(authClient, "utf8")).not.toContain("/env/");
-    expect(await fs.readFile(path.join(webDir, "src/client.ts"), "utf8")).toContain(
-      "createClient(",
-    );
-    expect(await fs.readFile(webAuthClient, "utf8")).toContain('from "../client"');
-    expect(webPackageJson.dependencies?.["better-auth"]).toBeUndefined();
-    expect(webPackageJson.dependencies?.[`@${sample.name}/auth`]).toBeDefined();
-    expect(authPackageJson.dependencies?.["better-auth"]).toBeDefined();
-
-    if (sample.config.payments === "polar") {
-      expect(webPackageJson.dependencies?.["@polar-sh/better-auth"]).toBeUndefined();
-      expect(authPackageJson.dependencies?.["@polar-sh/better-auth"]).toBeDefined();
-    }
-  }
-
-  if (sample.config.webDeploy === "cloudflare") {
-    expect(viteConfig).toContain("const cloudflareWorkersAlias: Record<string, string>");
-    expect(viteConfig).toContain('command === "serve"');
-    expect(viteConfig).toContain('external: ["cloudflare:workers"]');
-    const infra = await fs.readFile(path.join(projectDir, "packages/infra/alchemy.run.ts"), "utf8");
-    expect(infra).toContain('flags: ["nodejs_compat"]');
-    expect(infra).not.toContain("runWorkerFirst");
-  }
-
-  if (sample.config.webDeploy === "docker") {
-    expect(await fs.pathExists(path.join(webDir, "Dockerfile"))).toBe(true);
-  }
-
-  if (sample.config.payments === "polar") {
-    const authPackageJson = await fs.readJson(path.join(projectDir, "packages/auth/package.json"));
-    expect(authPackageJson.dependencies["@polar-sh/sdk"]).toBe("^0.47.0");
   }
 }
 
@@ -938,21 +1049,6 @@ async function validatePwaBuildArtifacts(sample: SelectedBuildSample, projectDir
   }
 }
 
-async function buildAndValidatePrismaWebArtifact(sample: SelectedBuildSample, projectDir: string) {
-  if (sample.config.webDeploy !== "prisma") return;
-
-  const webDir = path.join(projectDir, "apps/web");
-  const entrypoint = sample.config.frontend?.includes("react-router")
-    ? "build/server/index.js"
-    : sample.config.frontend?.includes("svelte")
-      ? "build/index.js"
-      : undefined;
-
-  if (entrypoint) {
-    expect(await fs.pathExists(path.join(webDir, entrypoint))).toBe(true);
-  }
-}
-
 async function getAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -988,13 +1084,240 @@ async function fetchWhenReady(url: string, init?: RequestInit) {
     } catch {
       init?.signal?.throwIfAborted();
       await Bun.sleep(100);
+      init?.signal?.throwIfAborted();
     }
   }
 
   return undefined;
 }
 
+async function bootAndValidateStartAuthRuntime(sample: SelectedBuildSample, projectDir: string) {
+  if (sample.name !== "tanstack-start-self-auth-todo") return;
+
+  await runCommand(sample.name, projectDir, sample.packageManager, ["run", "db:push"]);
+  const port = await getAvailablePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const runtime = execa(
+    sample.packageManager,
+    ["run", "serve", "--host", "127.0.0.1", "--port", String(port)],
+    {
+      cwd: path.join(projectDir, "apps/web"),
+      all: true,
+      reject: false,
+      timeout: commandTimeoutMs,
+      killDescendants: true,
+      env: { ...process.env, BETTER_AUTH_URL: origin },
+    },
+  );
+  const rpc = (
+    procedure: string,
+    input: null | { text: string } | { id: number; completed?: boolean } = null,
+    cookie = "",
+  ) =>
+    fetch(`${origin}/api/rpc/${procedure}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ json: input }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+  try {
+    expect((await fetchWhenReady(`${origin}/`))?.status).toBe(200);
+    expect(await (await rpc("healthCheck")).json()).toEqual({ json: "OK" });
+    expect((await rpc("privateData")).status).toBe(401);
+    const signup = await fetch(`${origin}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin },
+      body: JSON.stringify({
+        name: "Generated test",
+        email: "generated@example.test",
+        password: "Generated-test-password-2026",
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(signup.status).toBe(200);
+    const cookie = signup.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; ");
+    expect(cookie).not.toBe("");
+    const session = await fetch(`${origin}/api/auth/get-session`, {
+      headers: { cookie },
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(await session.json()).toMatchObject({ user: { email: "generated@example.test" } });
+    expect((await rpc("privateData", null, cookie)).status).toBe(200);
+    expect((await rpc("privateData")).status).toBe(401);
+
+    expect((await rpc("todo/create", { text: "Generated runtime todo" })).status).toBe(200);
+    const todos = z.object({
+      json: z.array(z.object({ id: z.number(), text: z.string(), completed: z.boolean() })),
+    });
+    const created = todos.parse(await (await rpc("todo/getAll")).json()).json;
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ text: "Generated runtime todo", completed: false });
+    const { id } = created[0];
+    expect((await rpc("todo/toggle", { id, completed: true })).status).toBe(200);
+    expect(todos.parse(await (await rpc("todo/getAll")).json()).json).toEqual([
+      { id, text: "Generated runtime todo", completed: true },
+    ]);
+    expect((await rpc("todo/delete", { id })).status).toBe(200);
+    expect(todos.parse(await (await rpc("todo/getAll")).json()).json).toEqual([]);
+  } catch (error) {
+    runtime.kill("SIGTERM");
+    const result = await runtime;
+    throw new Error(`TanStack Start runtime failed:\n${result.all}`, { cause: error });
+  } finally {
+    runtime.kill("SIGTERM");
+    await runtime;
+  }
+}
+
+async function bootAndValidateNuxtAuthRuntime(sample: SelectedBuildSample, projectDir: string) {
+  if (sample.name !== "nuxt-auth-todo-ai") return;
+
+  await runCommand(sample.name, path.join(projectDir, "packages/db"), sample.packageManager, [
+    "run",
+    "db:push",
+  ]);
+  const apiPort = await getAvailablePort();
+  const webPort = await getAvailablePort();
+  const apiOrigin = `http://127.0.0.1:${apiPort}`;
+  const webOrigin = `http://127.0.0.1:${webPort}`;
+  const api = execa(
+    "bun",
+    [
+      "-e",
+      'import app from "./dist/index.mjs"; Bun.serve({ fetch: app.fetch, hostname: "127.0.0.1", port: Number(process.env.PORT) });',
+    ],
+    {
+      cwd: path.join(projectDir, "apps/server"),
+      all: true,
+      reject: false,
+      timeout: commandTimeoutMs,
+      env: {
+        ...process.env,
+        PORT: String(apiPort),
+        BETTER_AUTH_URL: apiOrigin,
+        CORS_ORIGIN: webOrigin,
+      },
+    },
+  );
+  const web = execa("node", [".output/server/index.mjs"], {
+    cwd: path.join(projectDir, "apps/web"),
+    all: true,
+    reject: false,
+    timeout: commandTimeoutMs,
+    env: {
+      ...process.env,
+      HOST: "127.0.0.1",
+      PORT: String(webPort),
+      NUXT_SERVER_URL: apiOrigin,
+      NUXT_PUBLIC_SERVER_URL: apiOrigin,
+    },
+  });
+  try {
+    expect((await fetchWhenReady(apiOrigin))?.status).toBe(200);
+    const signup = await fetch(`${apiOrigin}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: webOrigin },
+      body: JSON.stringify({
+        name: "Nuxt SSR",
+        email: "nuxt-ssr@example.test",
+        password: "Generated-test-password-2026",
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    expect(signup.status).toBe(200);
+    const cookie = signup.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; ");
+    expect(cookie).not.toBe("");
+    const authenticated = await fetchWhenReady(`${webOrigin}/ssr-auth-probe`, {
+      headers: { cookie },
+    });
+    expect(authenticated?.status).toBe(200);
+    expect(await authenticated!.text()).toContain("data-ssr-user>nuxt-ssr@example.test</p>");
+    const anonymous = await fetchWhenReady(`${webOrigin}/ssr-auth-probe`);
+    expect(anonymous?.status).toBe(200);
+    expect(await anonymous!.text()).toContain("data-ssr-user>anonymous</p>");
+  } finally {
+    api.kill("SIGTERM");
+    web.kill("SIGTERM");
+    const results = await Promise.all([api, web]);
+    for (const result of results) console.info(formatOutput(result.all));
+  }
+}
+
+async function bootAndValidateAxiomRuntime(sample: SelectedBuildSample, projectDir: string) {
+  if (!sample.config.addons?.includes("axiom")) return;
+  const received: Array<{ path?: string; status?: number }> = [];
+  const collector = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      const events = z
+        .array(z.object({ path: z.string().optional(), status: z.number().optional() }))
+        .parse(await request.json());
+      received.push(...events);
+      return Response.json({ ingested: events.length, failed: 0 });
+    },
+  });
+  const port = await getAvailablePort();
+  const runtime = execa("node", [".output/server/index.mjs"], {
+    cwd: path.join(projectDir, "apps/web"),
+    all: true,
+    reject: false,
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      HOST: "127.0.0.1",
+      PORT: String(port),
+      AXIOM_API_KEY: "xaat-local-test",
+      AXIOM_DATASET: "generated-test",
+      AXIOM_EDGE_URL: collector.url.toString(),
+    },
+  });
+  try {
+    expect((await fetchWhenReady(`http://127.0.0.1:${port}/`))?.status).toBe(200);
+    expect((await fetchWhenReady(`http://127.0.0.1:${port}/missing-axiom-test`))?.status).toBe(404);
+    for (let attempt = 0; attempt < 100 && received.length < 2; attempt++) await Bun.sleep(50);
+    expect(received).toEqual(
+      expect.arrayContaining([
+        { path: "/", status: 200 },
+        { path: "/missing-axiom-test", status: 404 },
+      ]),
+    );
+  } finally {
+    runtime.kill("SIGTERM");
+    await runtime;
+    collector.stop(true);
+  }
+}
+
 describe("Generated runtime readiness", () => {
+  it("preserves cancellation during the final retry delay", async () => {
+    const controller = new AbortController();
+    const reason = new Error("Runtime probe cancelled during retry delay");
+    const fetchMock = spyOn(globalThis, "fetch").mockRejectedValue(new Error("Server not ready"));
+    let delays = 0;
+    const sleepMock = spyOn(Bun, "sleep").mockImplementation(async () => {
+      await Promise.resolve();
+      if (++delays === 100) controller.abort(reason);
+    });
+
+    try {
+      await expect(
+        fetchWhenReady("http://127.0.0.1:1/", { signal: controller.signal }),
+      ).rejects.toBe(reason);
+      expect(delays).toBe(100);
+    } finally {
+      sleepMock.mockRestore();
+      fetchMock.mockRestore();
+    }
+  });
+
   it("stops when the caller cancels a streaming response", async () => {
     const controller = new AbortController();
     const reason = new Error("Runtime probe cancelled");
@@ -1210,6 +1533,98 @@ async function writeSyntheticBuildConfig(projectDir: string) {
   }
 }
 
+async function writeOrpcInferenceChecks(sample: SelectedBuildSample, projectDir: string) {
+  if (sample.config.api !== "orpc") return;
+  const root = z
+    .object({ name: z.string() })
+    .parse(await fs.readJson(path.join(projectDir, "package.json")));
+  const routerFile = path.join(projectDir, "packages/api/src/routers/index.ts");
+  const originals = new Map([[routerFile, await fs.readFile(routerFile, "utf8")]]);
+  const probeFiles: string[] = [];
+  await fs.appendFile(
+    routerFile,
+    `\nexport const typeBoundaryProbe = {
+  read: publicProcedure.handler(() => {
+    const values: number[] = [];
+    return values[0];
+  }),
+};
+export type TypeBoundaryProbeClient = RouterClient<typeof typeBoundaryProbe>;\n`,
+  );
+  const checks = [
+    `import type { AppRouterClient, TypeBoundaryProbeClient } from "@${root.name}/api/routers/index";`,
+    "type IsAny<T> = 0 extends (1 & T) ? true : false;",
+    "type IsEqual<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;",
+    "type Assert<T extends true> = T;",
+    "type Health = Awaited<ReturnType<AppRouterClient['healthCheck']>>;",
+    "export type HealthIsTyped = Assert<IsAny<Health> extends false ? true : false>;",
+    "type IndexedOutput = Awaited<ReturnType<TypeBoundaryProbeClient['read']>>;",
+    "export type ServerOptionsPreserved = Assert<IsEqual<IndexedOutput, number | undefined>>;",
+    "export async function checkClient(client: AppRouterClient) {",
+    "  const health: string = await client.healthCheck();",
+    "  // @ts-expect-error Health check output is not a number.",
+    "  const invalidHealth: number = await client.healthCheck();",
+  ];
+  if (sample.config.examples?.includes("todo")) {
+    checks.push(
+      '  await client.todo.create({ text: "valid" });',
+      "  // @ts-expect-error Todo input must retain its string type in the client.",
+      "  await client.todo.create({ text: 123 });",
+      "  const todos = await client.todo.getAll();",
+      "  const text: string = todos[0]!.text;",
+      "  const completed: boolean = todos[0]!.completed;",
+      "  // @ts-expect-error Database-derived output must not become any.",
+      "  todos[0]!.text = 123;",
+      "  // @ts-expect-error Unknown database fields must be rejected.",
+      "  todos[0]!.nonexistentField;",
+      "  void [text, completed];",
+    );
+  }
+  if (sample.config.auth === "better-auth") {
+    const authFile = path.join(projectDir, "packages/auth/src/index.ts");
+    const authSource = await fs.readFile(authFile, "utf8");
+    originals.set(authFile, authSource);
+    await fs.writeFile(
+      authFile,
+      authSource.replace(
+        "emailAndPassword:",
+        `user: {
+      additionalFields: { role: { type: "string", required: true, defaultValue: "member", input: false } },
+    },
+    emailAndPassword:`,
+      ),
+    );
+    checks.push(
+      "  const privateData = await client.privateData();",
+      "  const email: string = privateData.user!.email;",
+      "  const role: string = privateData.user!.role;",
+      "  // @ts-expect-error Auth-derived output must not become any.",
+      "  privateData.user!.email = 123;",
+      "  // @ts-expect-error Configured Better Auth fields must reach the RPC client without becoming any.",
+      "  privateData.user!.role = 123;",
+      "  void [email, role];",
+    );
+  }
+  checks.push("  return { health, invalidHealth };", "}");
+  for (const app of ["web", "native", "server"]) {
+    const dir = path.join(projectDir, "apps", app);
+    if (!(await fs.pathExists(dir))) continue;
+    const source =
+      app === "native"
+        ? dir
+        : app === "web" && sample.config.frontend?.includes("nuxt")
+          ? path.join(dir, "app")
+          : path.join(dir, "src");
+    const probeFile = path.join(source, "orpc-inference-check.ts");
+    probeFiles.push(probeFile);
+    await fs.outputFile(probeFile, checks.join("\n"));
+  }
+  return async () => {
+    for (const [file, content] of originals) await fs.writeFile(file, content);
+    for (const file of probeFiles) await fs.remove(file);
+  };
+}
+
 describe.skipIf(!shouldRunBuildSamples)("Generated project install/build samples", () => {
   for (const sample of getSelectedBuildSamples()) {
     it(
@@ -1221,20 +1636,75 @@ describe.skipIf(!shouldRunBuildSamples)("Generated project install/build samples
         try {
           const createResult = await create(projectDir, sample.config);
           expect(createResult.isOk()).toBe(true);
-          await validateSolidScaffold(sample, projectDir);
           await writeSyntheticBuildConfig(projectDir);
 
-          for (const script of ["install", "build"] as const) {
-            const { command, args } = getPackageManagerCommand(sample.packageManager, script);
-            await runCommand(sample.name, projectDir, command, args);
+          const install = getPackageManagerCommand(sample.packageManager, "install");
+          await runCommand(sample.name, projectDir, install.command, install.args);
+          if (await fs.pathExists(path.join(projectDir, "packages/infra/alchemy.run.ts"))) {
+            await runCommand(
+              sample.name,
+              path.join(projectDir, "packages/infra"),
+              sample.packageManager,
+              ["run", "dev", ...(sample.packageManager === "npm" ? ["--"] : []), "--help"],
+            );
           }
-          await buildAndValidatePrismaWebArtifact(sample, projectDir);
+          if (sample.config.orm === "prisma") {
+            const generatedClient = path.join(projectDir, "packages/db/prisma/generated/client.ts");
+            expect(await fs.pathExists(generatedClient)).toBe(false);
+            await runCommand(
+              sample.name,
+              path.join(projectDir, "packages/db"),
+              sample.packageManager,
+              ["run", "db:generate"],
+            );
+            expect(await fs.pathExists(generatedClient)).toBe(true);
+          }
+          if (["tanstack-start-self-auth-todo", "next-self-prisma"].includes(sample.name)) {
+            await runCommand(sample.name, projectDir, sample.packageManager, [
+              "run",
+              "auth:generate",
+            ]);
+          }
+          const restoreTypeFixtures = await writeOrpcInferenceChecks(sample, projectDir);
+          if (sample.name === "nuxt-auth-todo-ai") {
+            await fs.outputFile(
+              path.join(projectDir, "apps/web/app/pages/ssr-auth-probe.vue"),
+              `<script setup lang="ts">
+const { $orpc } = useNuxtApp();
+let user = "anonymous";
+try {
+  user = (await $orpc.privateData.call()).user!.email;
+} catch {}
+</script>
+<template><p data-ssr-user>{{ user }}</p></template>`,
+            );
+          }
+          try {
+            await runWorkspaceTypeChecks(sample.name, projectDir, sample.packageManager);
+            if (sample.config.backend === "convex" && sample.config.payments === "revenuecat") {
+              await runCommand(sample.name, path.join(projectDir, "packages/backend"), "bun", [
+                "x",
+                "--no-install",
+                "tsc",
+                "--noEmit",
+                "-p",
+                "convex/tsconfig.json",
+              ]);
+            }
+          } finally {
+            // Build and boot the scaffold without the compile-only custom auth field.
+            await restoreTypeFixtures?.();
+          }
+          const build = getPackageManagerCommand(sample.packageManager, "build");
+          await runCommand(sample.name, projectDir, build.command, build.args);
           await bootAndValidatePrismaWebArtifact(sample, projectDir);
+          await bootAndValidateAxiomRuntime(sample, projectDir);
+          await bootAndValidateStartAuthRuntime(sample, projectDir);
+          await bootAndValidateNuxtAuthRuntime(sample, projectDir);
           await bootAndValidateSolidDevRuntime(sample, projectDir);
           await bootAndValidateSolidRuntime(sample, projectDir);
           await validateSolidBuildArtifacts(sample, projectDir);
           await validatePwaBuildArtifacts(sample, projectDir);
-          await runWorkspaceTypeChecks(sample.name, projectDir, sample.packageManager);
           if (sample.config.frontend?.some((frontend) => frontend.startsWith("native-"))) {
             // Exercise Metro/Babel and platform imports as well as TypeScript.
             // This exports JS bundles; it does not compile or sign native binaries.
