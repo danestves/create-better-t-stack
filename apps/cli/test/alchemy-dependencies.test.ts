@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { inc, minVersion, satisfies, subset } from "semver";
+import { satisfies, valid } from "semver";
 import yaml from "yaml";
 import { z } from "zod";
 
@@ -23,11 +23,11 @@ for (const packageManager of ["bun", "npm", "pnpm"] as const) {
       const result = await createVirtual({
         projectName: `alchemy-${deployment}-${packageManager}`,
         frontend: ["next"],
-        backend: deployment === "prisma" ? "none" : "hono",
-        runtime: deployment === "prisma" ? "none" : "bun",
-        database: deployment === "prisma" ? "none" : "sqlite",
-        orm: deployment === "prisma" ? "none" : "drizzle",
-        api: deployment === "prisma" ? "none" : "orpc",
+        backend: deployment === "prisma" || deployment === "none" ? "none" : "hono",
+        runtime: deployment === "prisma" || deployment === "none" ? "none" : "bun",
+        database: deployment === "prisma" || deployment === "none" ? "none" : "sqlite",
+        orm: deployment === "prisma" || deployment === "none" ? "none" : "drizzle",
+        api: deployment === "prisma" || deployment === "none" ? "none" : "orpc",
         auth: "none",
         webDeploy: deployment === "cloudflare" || deployment === "prisma" ? deployment : "none",
         addons: deployment === "axiom" ? ["axiom"] : ["none"],
@@ -42,8 +42,11 @@ for (const packageManager of ["bun", "npm", "pnpm"] as const) {
           ? yaml.parse(files.get("pnpm-workspace.yaml")!)
           : JSON.parse(files.get("package.json")!),
       );
-      // Stable Effect peers resolve normally; generation must not inject an override.
-      expect(workspace.overrides?.["@effect/platform-node-shared"]).toBeUndefined();
+      expect(
+        Object.keys(workspace.overrides ?? {}).filter(
+          (name) => name === "effect" || name.startsWith("@effect/"),
+        ),
+      ).toEqual([]);
       if (deployment !== "none") {
         const infra = infraSchema.parse(JSON.parse(files.get("packages/infra/package.json")!));
         const catalog =
@@ -55,15 +58,11 @@ for (const packageManager of ["bun", "npm", "pnpm"] as const) {
           return z.string().parse(resolved);
         };
         const effectRange = version("effect");
-        const minimumEffect = minVersion(effectRange);
-        if (!minimumEffect) throw new Error("Expected a valid Effect dependency range");
-        const nextPatch = inc(minimumEffect, "patch");
-        if (!nextPatch) throw new Error("Expected a compatible Effect patch version");
-        expect(satisfies(nextPatch, effectRange)).toBe(true);
+        expect(valid(effectRange)).toBe(effectRange);
         for (const platform of ["@effect/platform-node", "@effect/platform-bun"]) {
           const platformRange = version(platform);
-          expect(subset(platformRange, effectRange)).toBe(true);
-          expect(satisfies(nextPatch, platformRange)).toBe(true);
+          expect(valid(platformRange)).toBe(platformRange);
+          expect(satisfies(platformRange, effectRange)).toBe(true);
         }
         if (deployment === "prisma") {
           expect(version("@alchemy.run/frontend-frameworks")).toBe(version("alchemy"));
